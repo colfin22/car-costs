@@ -117,6 +117,15 @@ One placeholder car is seeded on first run — rename it via **Edit**, and add
 more with **+ Add car**.
 Configuration is via environment variables — see [.env.example](.env.example).
 
+### Install it as a phone app (PWA)
+
+There's no app store — there doesn't need to be. The page is an installable
+PWA: open your instance in the phone's browser and add it to the home screen
+(Android Chrome: **⋮ → Add to Home screen**; iOS Safari: **Share → Add to Home
+Screen**). It installs with its own icon and opens fullscreen like a native
+app. For install and use away from home the instance needs to be reachable
+over HTTPS — see the next section.
+
 ### Exposing it to the internet (optional)
 
 Set `CARCOSTS_PASSWORD` in the environment and any request arriving through a
