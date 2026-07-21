@@ -15,6 +15,12 @@ one-handed at the pump.*
 
 <a href="https://buymeacoffee.com/colfin22"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee"></a>
 
+<p>
+<img src="docs/car-page.png" width="300" alt="Car status page — photo, due badges, renewal banner, year totals">
+&nbsp;
+<img src="docs/home.png" width="300" alt="Home screen — car cards with year total and fuel stats">
+</p>
+
 </div>
 
 Open it, tap a car, add the entry. That's the entire workflow. Everything else —
@@ -66,8 +72,9 @@ cost per year, per km, and what's due next?*
 - **Cars come and go**: add cars in the UI; retiring a replaced car keeps its
   full history in a restorable "Retired" section.
 - **Optional password gate** for internet-facing use (details below), exempting
-  internal monitoring/sensor callers. Installable as a home-screen PWA. Dates
-  day-first. Light/dark. No build step, no accounts, no cloud.
+  internal monitoring/sensor callers. Installable as a home-screen PWA; cars are
+  deep-linkable (`#car-1`). Dates day-first. Light/dark. No build step, no
+  accounts, no cloud.
 
 ## Stack
 

@@ -24,6 +24,7 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;"
 
 /* ---------- car list ---------- */
 async function showList() {
+  if (location.hash.startsWith("#car-")) history.replaceState(null, "", location.pathname);
   const cars = await api("/api/cars");
   app.innerHTML = `<h1>Car Costs <small>${new Date().getFullYear()}</small></h1>` +
     cars.map(c => `
@@ -56,7 +57,8 @@ async function showList() {
       const f = new FormData($("form", d));
       await api("/api/cars", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: f.get("name"), reg: f.get("reg") || "", fuel_type: f.get("fuel_type") }) });
-      showList();
+      const deepLink = location.hash.match(/^#car-(\d+)$/);
+if (deepLink) showCar(+deepLink[1]); else showList();
     }));
   app.querySelectorAll(".car-card").forEach(el =>
     el.addEventListener("click", () => showCar(+el.dataset.id)));
@@ -137,6 +139,7 @@ function wireBanners(car) {
 
 /* ---------- car detail ---------- */
 async function showCar(id, year) {
+  location.hash = "car-" + id;
   const d = await api(`/api/cars/${id}` + (year ? `?year=${year}` : ""));
   const c = d.car, s = d.summary;
   const cats = Object.entries(s.by_category).map(([k, v]) =>
@@ -320,8 +323,10 @@ function editCarDialog(car) {
     await api(`/api/cars/${car.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ archived: !car.archived }) });
     dlg.close("cancel");
-    showList();
+    const deepLink = location.hash.match(/^#car-(\d+)$/);
+if (deepLink) showCar(+deepLink[1]); else showList();
   });
 }
 
-showList();
+const deepLink = location.hash.match(/^#car-(\d+)$/);
+if (deepLink) showCar(+deepLink[1]); else showList();
