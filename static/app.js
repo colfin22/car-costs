@@ -3,6 +3,8 @@ const $ = (s, el) => (el || document).querySelector(s);
 const app = $("#app");
 const eur = n => "€" + Number(n).toLocaleString("en-IE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const today = () => new Date().toISOString().slice(0, 10);
+const dmy = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`;
+const dm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 const CAT_LABELS = { fuel: "Fuel", charge: "Charge", insurance: "Insurance", tax: "Tax", nct: "NCT", service: "Service", odo: "Mileage" };
 const photoUrl = (c, thumb) => c.photo_ver ? `/photos/${c.id}${thumb ? ".thumb" : ""}.jpg?v=${c.photo_ver}` : null;
 function dueBadge(label, iso) {
@@ -10,7 +12,7 @@ function dueBadge(label, iso) {
   const days = Math.ceil((new Date(iso) - new Date()) / 86400000);
   const cls = days < 0 ? "due-red" : days <= 30 ? "due-amber" : "due-ok";
   const txt = days < 0 ? Math.abs(days) + "d overdue" : days + "d";
-  return `<span class="due ${cls}">${label} ${iso.slice(5)} · ${txt}</span>`;
+  return `<span class="due ${cls}">${label} ${dmy(iso)} · ${txt}</span>`;
 }
 
 async function api(path, opts) {
@@ -60,7 +62,7 @@ async function showCar(id, year) {
         <button class="small ghost" id="edit-car">Edit</button></div>
       ${detailBits ? `<div class="muted">${esc(detailBits)}${c.vin ? " · VIN " + esc(c.vin) : ""}</div>` : ""}
       ${d.current_odo ? `<div class="muted" style="margin-top:4px">Mileage: ${Math.round(d.current_odo).toLocaleString()} km</div>` : ""}
-      <div class="dues">${dueBadge("NCT", c.nct_due)}${c.nct_booked ? `<span class="due due-booked">NCT test ${c.nct_booked.slice(5)} · booked</span>` : ""}${dueBadge("Tax", c.tax_due)}${dueBadge("Ins", c.insurance_due)}</div>
+      <div class="dues">${dueBadge("NCT", c.nct_due)}${c.nct_booked ? `<span class="due due-booked">NCT test ${dmy(c.nct_booked)} · booked</span>` : ""}${dueBadge("Tax", c.tax_due)}${dueBadge("Ins", c.insurance_due)}</div>
     </div>
     <div class="card">
       <div class="row" style="margin:0 0 4px">
@@ -74,7 +76,7 @@ async function showCar(id, year) {
     <div class="btn-grid">${addBtns}</div>
     <div class="card"><div class="muted" style="margin-bottom:4px">Recent</div>
       ${d.entries.map(e => `
-        <div class="entry"><span>${e.date.slice(5)} <span class="cat">${CAT_LABELS[e.category]}</span>
+        <div class="entry"><span>${dm(e.date)} <span class="cat">${CAT_LABELS[e.category]}</span>
           ${e.litres ? e.litres + "L @" + (e.price_per_litre || 0).toFixed(3) : ""}
           ${e.kwh ? e.kwh + "kWh" : ""} ${esc(e.note || "")}</span>
         <span>${e.category === "odo" ? Math.round(e.odometer).toLocaleString() + " km" : eur(e.cost)} <button class="danger" data-del="${e.id}">✕</button></span></div>`).join("") ||
