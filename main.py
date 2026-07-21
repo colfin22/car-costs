@@ -243,8 +243,11 @@ def service_due(con, car, current_odo):
         ratio_km = km_left / car["service_interval_km"]
         if ratio_km < ratio_time:
             binding = "km"
+    next_km = None
+    if car["service_interval_km"] and last["odometer"] is not None:
+        next_km = round(last["odometer"] + car["service_interval_km"])
     return {"binding": binding, "date": due_date.isoformat(), "days": days,
-            "km_left": km_left, "last_service": last["date"]}
+            "km_left": km_left, "next_km": next_km, "last_service": last["date"]}
 
 
 def car_or_404(con, car_id: int):
