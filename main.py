@@ -278,6 +278,23 @@ def photo(name: str):
     return FileResponse(path)
 
 
+@app.get("/api/dues")
+def dues():
+    """Upcoming renewals in a dict shape suited to a Home Assistant REST sensor."""
+    labels = {"nct_due": "NCT", "nct_booked": "NCT test", "tax_due": "Tax", "insurance_due": "Insurance"}
+    items = []
+    today_d = date.today()
+    with db() as con:
+        for car in con.execute("SELECT * FROM cars ORDER BY id"):
+            for field, label in labels.items():
+                v = car[field]
+                if v:
+                    days = (date.fromisoformat(v) - today_d).days
+                    items.append({"car": car["name"], "item": label, "date": v, "days": days})
+    items.sort(key=lambda i: i["days"])
+    return {"items": items, "next_days": items[0]["days"] if items else None}
+
+
 @app.get("/healthz")
 def healthz():
     with db() as con:
