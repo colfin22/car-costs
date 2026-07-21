@@ -19,7 +19,7 @@ from PIL import Image, ImageOps
 DB_PATH = os.environ.get("CARCOSTS_DB", os.path.join(os.path.dirname(__file__), "data", "carcosts.db"))
 PHOTO_DIR = os.path.join(os.path.dirname(DB_PATH), "photos")
 
-CATEGORIES = ("fuel", "charge", "insurance", "tax", "nct", "service")
+CATEGORIES = ("fuel", "charge", "insurance", "tax", "nct", "service", "odo")
 FUEL_TYPES = ("petrol", "diesel", "hybrid", "phev", "ev")
 
 app = FastAPI(title="Car Costs")
@@ -120,7 +120,7 @@ def year_summary(con, car_id: int, year: int):
         "SELECT category, SUM(cost) total FROM entries "
         "WHERE car_id=? AND date LIKE ? GROUP BY category",
         (car_id, f"{year}-%")).fetchall()
-    by_cat = {r["category"]: round(r["total"], 2) for r in rows}
+    by_cat = {r["category"]: round(r["total"], 2) for r in rows if r["category"] != "odo"}
     odo = con.execute(
         "SELECT MIN(odometer) lo, MAX(odometer) hi FROM entries "
         "WHERE car_id=? AND date LIKE ? AND odometer IS NOT NULL",
@@ -203,10 +203,14 @@ def car_detail(car_id: int, year: int | None = None):
         entries = con.execute(
             "SELECT * FROM entries WHERE car_id=? ORDER BY date DESC, id DESC LIMIT 50",
             (car_id,)).fetchall()
+        cur_odo = con.execute(
+            "SELECT odometer FROM entries WHERE car_id=? AND odometer IS NOT NULL "
+            "ORDER BY date DESC, id DESC LIMIT 1", (car_id,)).fetchone()
         years = [r["y"] for r in con.execute(
             "SELECT DISTINCT substr(date,1,4) y FROM entries WHERE car_id=? ORDER BY y DESC",
             (car_id,))]
         return {"car": dict(car),
+                "current_odo": cur_odo["odometer"] if cur_odo else None,
                 "summary": year_summary(con, car_id, y),
                 "fuel": fuel_stats(con, car_id),
                 "entries": [dict(e) for e in entries],
@@ -223,6 +227,10 @@ def add_entry(car_id: int, e: EntryNew):
         cost = round(e.litres * e.price_per_litre, 2)
     if cost is None and e.category == "charge" and e.kwh and e.price_per_kwh:
         cost = round(e.kwh * e.price_per_kwh, 2)
+    if e.category == "odo":
+        if e.odometer is None:
+            raise HTTPException(422, "odometer reading is required for a mileage entry")
+        cost = 0
     if cost is None:
         raise HTTPException(422, "cost is required (or litres+price / kwh+price for fuel/charge)")
     with db() as con:

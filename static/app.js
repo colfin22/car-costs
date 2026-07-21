@@ -3,7 +3,7 @@ const $ = (s, el) => (el || document).querySelector(s);
 const app = $("#app");
 const eur = n => "€" + Number(n).toLocaleString("en-IE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const today = () => new Date().toISOString().slice(0, 10);
-const CAT_LABELS = { fuel: "Fuel", charge: "Charge", insurance: "Insurance", tax: "Tax", nct: "NCT", service: "Service" };
+const CAT_LABELS = { fuel: "Fuel", charge: "Charge", insurance: "Insurance", tax: "Tax", nct: "NCT", service: "Service", odo: "Mileage" };
 const photoUrl = (c, thumb) => c.photo_ver ? `/photos/${c.id}${thumb ? ".thumb" : ""}.jpg?v=${c.photo_ver}` : null;
 function dueBadge(label, iso) {
   if (!iso) return "";
@@ -44,7 +44,7 @@ async function showCar(id, year) {
   const c = d.car, s = d.summary;
   const cats = Object.entries(s.by_category).map(([k, v]) =>
     `<div class="total-line"><span class="cat">${CAT_LABELS[k] || k}</span><span>${eur(v)}</span></div>`).join("");
-  const addBtns = ["fuel", ...(c.ev_enabled ? ["charge"] : []), "insurance", "tax", "nct", "service"]
+  const addBtns = ["fuel", ...(c.ev_enabled ? ["charge"] : []), "odo", "insurance", "tax", "nct", "service"]
     .map(k => `<button data-cat="${k}">+ ${CAT_LABELS[k]}</button>`).join("");
   const yearOpts = (d.years.length ? d.years : [String(s.year)])
     .map(y => `<option ${+y === s.year ? "selected" : ""}>${y}</option>`).join("");
@@ -59,6 +59,7 @@ async function showCar(id, year) {
       <div class="row" style="margin-top:10px"><span class="nm">${esc(c.name)}${c.reg ? `<span class="reg">${esc(c.reg)}</span>` : ""}</span>
         <button class="small ghost" id="edit-car">Edit</button></div>
       ${detailBits ? `<div class="muted">${esc(detailBits)}${c.vin ? " · VIN " + esc(c.vin) : ""}</div>` : ""}
+      ${d.current_odo ? `<div class="muted" style="margin-top:4px">Mileage: ${Math.round(d.current_odo).toLocaleString()} km</div>` : ""}
       <div class="dues">${dueBadge("NCT", c.nct_due)}${c.nct_booked ? `<span class="due due-booked">NCT test ${c.nct_booked.slice(5)} · booked</span>` : ""}${dueBadge("Tax", c.tax_due)}${dueBadge("Ins", c.insurance_due)}</div>
     </div>
     <div class="card">
@@ -76,7 +77,7 @@ async function showCar(id, year) {
         <div class="entry"><span>${e.date.slice(5)} <span class="cat">${CAT_LABELS[e.category]}</span>
           ${e.litres ? e.litres + "L @" + (e.price_per_litre || 0).toFixed(3) : ""}
           ${e.kwh ? e.kwh + "kWh" : ""} ${esc(e.note || "")}</span>
-        <span>${eur(e.cost)} <button class="danger" data-del="${e.id}">✕</button></span></div>`).join("") ||
+        <span>${e.category === "odo" ? Math.round(e.odometer).toLocaleString() + " km" : eur(e.cost)} <button class="danger" data-del="${e.id}">✕</button></span></div>`).join("") ||
         '<div class="muted">Nothing yet.</div>'}
     </div>`;
   $(".back").addEventListener("click", showList);
@@ -126,6 +127,8 @@ function entryDialog(car, cat) {
       <label>kWh</label><input name="kwh" type="number" step="0.01" inputmode="decimal" required>
       <label>Price per kWh (€)</label><input name="price_per_kwh" type="number" step="0.001" inputmode="decimal" required>
       <div class="hint" id="calc"></div>`
+    : cat === "odo" ? `
+      <label>Odometer (km)</label><input name="odometer" type="number" step="1" inputmode="numeric" required>`
     : `<label>Amount (€)</label><input name="cost" type="number" step="0.01" inputmode="decimal" required>
        <label>Note</label><input name="note" placeholder="${cat === "service" ? "e.g. tyres, 2 front" : "optional"}">`;
   const dlg = dialog(`
