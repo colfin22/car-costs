@@ -46,6 +46,7 @@ input, select, textarea { width: 100%; font: inherit; padding: 10px 12px; border
 .entry { display: flex; justify-content: space-between; gap: 8px; padding: 9px 0;
   border-top: 1px solid var(--line); font-size: .92rem; align-items: center; }
 .entry:first-child { border-top: 0; }
+.recent-scroll { max-height: 240px; overflow-y: auto; }
 .cat { display: inline-block; min-width: 66px; color: var(--muted); }
 .total-line { display: flex; justify-content: space-between; padding: 3px 0; font-size: .95rem; }
 dialog { border: 1px solid var(--line); border-radius: 16px; background: var(--card);
@@ -76,6 +77,6 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 </head>
 <body>
 <div id="app"></div>
-<script src="/static/app.js?v=20"></script>
+<script src="/static/app.js?v=21"></script>
 </body>
 </html>
