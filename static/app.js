@@ -76,7 +76,7 @@ async function showCar(id, year) {
     <div class="btn-grid">${addBtns}</div>
     <div class="card"><div class="muted" style="margin-bottom:4px">Recent</div>
       ${d.entries.map(e => `
-        <div class="entry"><span>${dm(e.date)} <span class="cat">${CAT_LABELS[e.category]}</span>
+        <div class="entry"><span>${dmy(e.date)} <span class="cat">${CAT_LABELS[e.category]}</span>
           ${e.litres ? e.litres + "L @" + (e.price_per_litre || 0).toFixed(3) : ""}
           ${e.kwh ? e.kwh + "kWh" : ""} ${esc(e.note || "")}</span>
         <span>${e.category === "odo" ? Math.round(e.odometer).toLocaleString() + " km" : eur(e.cost)} <button class="danger" data-del="${e.id}">✕</button></span></div>`).join("") ||
