@@ -184,7 +184,7 @@ async function showCar(id, year) {
   const c = d.car, s = d.summary;
   const cats = Object.entries(s.by_category).map(([k, v]) =>
     `<div class="total-line"><span class="cat">${CAT_LABELS[k] || k}</span><span>${eur(v)}</span></div>`).join("");
-  const addBtns = ["fuel", ...(c.ev_enabled ? ["charge"] : []), "odo", "insurance", "tax", "nct", "service", "belt"]
+  const addBtns = ["fuel", ...(c.ev_enabled ? ["charge"] : []), "odo", "insurance", "tax", "nct", "service"]
     .map(k => `<button data-cat="${k}">+ ${CAT_LABELS[k]}</button>`).join("");
   const yearOpts = (d.years.length ? d.years : [String(s.year)])
     .map(y => `<option ${+y === s.year ? "selected" : ""}>${y}</option>`).join("");
@@ -341,6 +341,7 @@ function editCarDialog(car) {
     <label>Service interval (km)</label><input name="service_interval_km" type="number" step="500" inputmode="numeric" value="${car.service_interval_km || ""}" placeholder="e.g. 15000">
     <label>Service interval (months)</label><input name="service_interval_months" type="number" inputmode="numeric" value="${car.service_interval_months || ""}" placeholder="12 (default)">
     <label>Timing belt interval (km)</label><input name="belt_interval_km" type="number" step="1000" inputmode="numeric" value="${car.belt_interval_km || ""}" placeholder="e.g. 100000">
+    <button type="button" class="small ghost" id="log-belt" style="margin-top:8px">Log a timing belt change…</button>
     <label>Fuel type</label><select name="fuel_type">
       ${["petrol", "diesel", "hybrid", "phev", "ev"].map(t =>
         `<option ${car.fuel_type === t ? "selected" : ""}>${t}</option>`).join("")}</select>
@@ -375,6 +376,7 @@ function editCarDialog(car) {
       });
     } else showCar(car.id);
   });
+  $("#log-belt", dlg).addEventListener("click", () => { dlg.close("cancel"); entryDialog(car, "belt"); });
   $("#retire-car", dlg).addEventListener("click", async () => {
     const verb = car.archived ? "Restore" : "Retire";
     if (!confirm(verb + " " + car.name + "?" + (car.archived ? "" : " All history is kept; it moves to the Retired list."))) return;
