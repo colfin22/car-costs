@@ -197,7 +197,7 @@ function entryDialog(car, cat) {
   const unitFields = isFuel ? `
       <label>Amount (€)</label><input name="cost" type="number" step="0.01" inputmode="decimal" required>
       <label>Odometer (km)</label><input name="odometer" type="number" step="1" inputmode="numeric" required>
-      <label>Litres</label><input name="litres" type="number" step="0.01" inputmode="decimal" required>
+      <label>Litres (optional)</label><input name="litres" type="number" step="0.01" inputmode="decimal">
       <div class="hint" id="calc"></div>`
     : isCharge ? `
       <label>Odometer (km)</label><input name="odometer" type="number" step="1" inputmode="numeric">
