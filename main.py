@@ -5,12 +5,17 @@ Categories: fuel, insurance, tax, nct, service — plus charge (kWh), which the
 UI only shows for cars with the electric toggle on, so an EV/PHEV can be
 enabled later with no schema change.
 """
+import hashlib
+import hmac
+import ipaddress
 import os
+import secrets as pysecrets
 import sqlite3
+import time
 from contextlib import contextmanager
 from datetime import date
 
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -23,6 +28,94 @@ CATEGORIES = ("fuel", "charge", "insurance", "tax", "nct", "service", "odo")
 FUEL_TYPES = ("petrol", "diesel", "hybrid", "phev", "ev")
 
 app = FastAPI(title="Car Costs")
+
+# ---- auth: magpie-pattern gate for tunnel-facing traffic -------------------
+# Auth is ON only when CARCOSTS_PASSWORD is set (env / systemd EnvironmentFile).
+# Only requests that arrived via Cloudflare (Cf-Connecting-Ip header) or from a
+# non-private peer need the session cookie; internal direct-IP callers (the HA
+# REST sensor, the uptime monitor, the LAN reverse-proxy path) are exempt — the
+# only internet route is the tunnel, and Cloudflare always stamps its header.
+AUTH_COOKIE = "carcosts_auth"
+SESSION_DAYS = 30
+PUBLIC_PATHS = {"/login", "/healthz", "/favicon.ico"}
+
+
+def _secret() -> str:
+    path = os.path.join(os.path.dirname(DB_PATH), "secret")
+    if not os.path.isfile(path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(pysecrets.token_hex(32))
+        os.chmod(path, 0o600)
+    return open(path).read().strip()
+
+
+def _password() -> str | None:
+    return os.environ.get("CARCOSTS_PASSWORD") or None
+
+
+def _token() -> str:
+    return hmac.new(_secret().encode(), _password().encode(), hashlib.sha256).hexdigest()
+
+
+def _is_internal(request) -> bool:
+    if request.headers.get("cf-connecting-ip"):
+        return False
+    try:
+        return ipaddress.ip_address(request.client.host).is_private
+    except (ValueError, AttributeError):
+        return False
+
+
+def _is_authed(request) -> bool:
+    cookie = request.cookies.get(AUTH_COOKIE, "")
+    return bool(cookie) and hmac.compare_digest(cookie, _token())
+
+
+LOGIN_PAGE = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Car Costs — login</title>
+<style>body{font:16px system-ui;background:#f4f5f7;color:#1c1e21;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+@media (prefers-color-scheme:dark){body{background:#111417;color:#e8eaed}}
+form{background:rgba(128,128,128,.08);border:1px solid rgba(128,128,128,.25);border-radius:14px;padding:24px;width:min(88vw,320px)}
+h1{font-size:1.1rem;margin:0 0 14px}input,button{width:100%;font:inherit;padding:11px;border-radius:10px;border:1px solid rgba(128,128,128,.35);box-sizing:border-box}
+button{margin-top:12px;background:#2563eb;color:#fff;border:0;font-weight:600;cursor:pointer}
+.err{color:#b3261e;font-size:.85rem;margin-top:8px}</style></head><body>
+<form method="post" action="/login"><h1>Car Costs</h1>
+<input type="password" name="password" placeholder="Password" autofocus required>{err}
+<button>Sign in</button></form></body></html>"""
+
+
+@app.middleware("http")
+async def auth_gate(request, call_next):
+    if (_password() and request.url.path not in PUBLIC_PATHS
+            and not _is_internal(request) and not _is_authed(request)):
+        from fastapi.responses import JSONResponse, RedirectResponse
+        if request.url.path.startswith("/api/"):
+            return JSONResponse({"detail": "auth required"}, status_code=401)
+        return RedirectResponse("/login", status_code=302)
+    return await call_next(request)
+
+
+@app.get("/login")
+def login_page():
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(LOGIN_PAGE.replace("{err}", ""))
+
+
+@app.post("/login")
+async def login_submit(request: Request):
+    from fastapi.responses import HTMLResponse, RedirectResponse
+    form = await request.form()
+    attempt = str(form.get("password") or "")
+    if _password() and hmac.compare_digest(attempt, _password()):
+        resp = RedirectResponse("/", status_code=302)
+        resp.set_cookie(AUTH_COOKIE, _token(), max_age=SESSION_DAYS * 86400,
+                        httponly=True, secure=True, samesite="none")
+        return resp
+    time.sleep(1.5)   # blunt brute-force damper
+    return HTMLResponse(LOGIN_PAGE.replace("{err}", '<div class="err">Wrong password</div>'),
+                        status_code=401)
+# ---------------------------------------------------------------------------
 
 
 @contextmanager
