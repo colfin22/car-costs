@@ -20,11 +20,16 @@ function svcBadge(sd) {
 }
 
 function beltBadge(bd) {
-  // Belts are usually years away — surface only when it actually matters.
-  if (!bd || bd.km_left === null || bd.km_left > 2000) return "";
-  const overdue = bd.km_left < 0;
-  const txt = overdue ? Math.abs(bd.km_left).toLocaleString() + " km overdue"
-                      : "in " + bd.km_left.toLocaleString() + " km";
+  // Belts are usually years away — surface only when it actually matters:
+  // within 2000 km / 60 days of whichever deadline is binding, or overdue.
+  if (!bd) return "";
+  const kmSide = bd.binding === "km";
+  const left = kmSide ? bd.km_left : bd.days;
+  if (left === null || left === undefined || (kmSide ? left > 2000 : left > 60)) return "";
+  const overdue = left < 0;
+  const txt = kmSide
+    ? (overdue ? Math.abs(left).toLocaleString() + " km overdue" : "in " + left.toLocaleString() + " km")
+    : (overdue ? Math.abs(left) + "d overdue" : dmy(bd.date) + " · " + left + "d");
   return `<span class="due ${overdue ? "due-red" : "due-amber"}">Belt ${txt}</span>`;
 }
 
@@ -106,10 +111,16 @@ function bannersHtml(c, sd, bd) {
         <div class="banner-actions"><button class="small" data-act="svc-done">Log service…</button></div></div>`);
     }
   }
-  if (bd && bd.km_left !== null && bd.km_left <= 1000) {
-    const when = bd.km_left < 0 ? Math.abs(bd.km_left).toLocaleString() + " km overdue" : bd.km_left.toLocaleString() + " km left";
-    out.push(`<div class="card banner">Timing belt due (${when}) — changed?
-      <div class="banner-actions"><button class="small" data-act="belt-done">Log belt change…</button></div></div>`);
+  if (bd) {
+    const kmSide = bd.binding === "km";
+    const left = kmSide ? bd.km_left : bd.days;
+    if (left !== null && left !== undefined && (kmSide ? left <= 1000 : left <= 30)) {
+      const when = kmSide
+        ? (left < 0 ? Math.abs(left).toLocaleString() + " km overdue" : left.toLocaleString() + " km left")
+        : (left < 0 ? Math.abs(left) + "d overdue" : "due " + dmy(bd.date));
+      out.push(`<div class="card banner">Timing belt due (${when}) — changed?
+        <div class="banner-actions"><button class="small" data-act="belt-done">Log belt change…</button></div></div>`);
+    }
   }
   const dues = [["nct_due", "NCT"], ["tax_due", "Tax"], ["insurance_due", "Insurance"]];
   for (const [field, label] of dues) {
@@ -341,6 +352,7 @@ function editCarDialog(car) {
     <label>Service interval (km)</label><input name="service_interval_km" type="number" step="500" inputmode="numeric" value="${car.service_interval_km || ""}" placeholder="e.g. 15000">
     <label>Service interval (months)</label><input name="service_interval_months" type="number" inputmode="numeric" value="${car.service_interval_months || ""}" placeholder="12 (default)">
     <label>Timing belt interval (km)</label><input name="belt_interval_km" type="number" step="1000" inputmode="numeric" value="${car.belt_interval_km || ""}" placeholder="e.g. 100000">
+    <label>Timing belt interval (years)</label><input name="belt_interval_years" type="number" inputmode="numeric" value="${car.belt_interval_years || ""}" placeholder="e.g. 8">
     <button type="button" class="small ghost" id="log-belt" style="margin-top:8px">Log a timing belt change…</button>
     <label>Fuel type</label><select name="fuel_type">
       ${["petrol", "diesel", "hybrid", "phev", "ev"].map(t =>
@@ -358,6 +370,7 @@ function editCarDialog(car) {
         nct_due: f.get("nct_due") || null, nct_booked: newBooked,
         service_interval_km: f.get("service_interval_km") ? +f.get("service_interval_km") : null,
         belt_interval_km: f.get("belt_interval_km") ? +f.get("belt_interval_km") : null,
+        belt_interval_years: f.get("belt_interval_years") ? +f.get("belt_interval_years") : null,
         service_interval_months: f.get("service_interval_months") ? +f.get("service_interval_months") : null,
         tax_due: f.get("tax_due") || null,
         insurance_due: f.get("insurance_due") || null,

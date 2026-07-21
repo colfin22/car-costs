@@ -174,7 +174,8 @@ def init_db():
                          ("archived", "INTEGER NOT NULL DEFAULT 0"),
                          ("service_interval_km", "INTEGER"),
                          ("service_interval_months", "INTEGER"),
-                         ("belt_interval_km", "INTEGER")):
+                         ("belt_interval_km", "INTEGER"),
+                         ("belt_interval_years", "INTEGER")):
             if col not in have:
                 con.execute(f"ALTER TABLE cars ADD COLUMN {col} {typ}")
         if con.execute("SELECT COUNT(*) c FROM cars").fetchone()["c"] == 0:
@@ -195,6 +196,7 @@ class CarPatch(BaseModel):
     service_interval_km: int | None = None
     service_interval_months: int | None = None
     belt_interval_km: int | None = None
+    belt_interval_years: int | None = None
     nct_due: str | None = None       # YYYY-MM-DD
     nct_booked: str | None = None    # NCT appointment date, if one is booked
     tax_due: str | None = None
@@ -253,17 +255,30 @@ def service_due(con, car, current_odo):
 
 
 def belt_due(con, car, current_odo):
-    """Mileage-only: last belt change's odometer + the car's belt interval."""
-    if not car["belt_interval_km"]:
+    """Dual deadline like servicing — km and years from the last belt change,
+    whichever comes first (e.g. 160,000 km or 8 years)."""
+    if not car["belt_interval_km"] and not car["belt_interval_years"]:
         return None
     last = con.execute(
         "SELECT date, odometer FROM entries WHERE car_id=? AND category='belt' "
         "AND odometer IS NOT NULL ORDER BY date DESC, id DESC LIMIT 1", (car["id"],)).fetchone()
     if not last:
         return None
-    next_km = round(last["odometer"] + car["belt_interval_km"])
-    return {"next_km": next_km,
-            "km_left": round(next_km - current_odo) if current_odo is not None else None,
+    next_km = km_left = due_date = days = None
+    if car["belt_interval_km"]:
+        next_km = round(last["odometer"] + car["belt_interval_km"])
+        if current_odo is not None:
+            km_left = round(next_km - current_odo)
+    if car["belt_interval_years"]:
+        due_date = add_months(date.fromisoformat(last["date"]), car["belt_interval_years"] * 12)
+        days = (due_date - date.today()).days
+    binding = "time" if days is not None else "km"
+    if days is not None and km_left is not None:
+        ratio_time = days / (car["belt_interval_years"] * 365.25)
+        ratio_km = km_left / car["belt_interval_km"]
+        binding = "km" if ratio_km < ratio_time else "time"
+    return {"binding": binding, "next_km": next_km, "km_left": km_left,
+            "date": due_date.isoformat() if due_date else None, "days": days,
             "last_change": last["date"], "last_odo": round(last["odometer"])}
 
 
@@ -346,10 +361,12 @@ def edit_car(car_id: int, patch: CarPatch):
         # nullable fields clear when the client sends an explicit null; fields
         # simply absent from the payload are left untouched (model_fields_set).
         NULLABLE = {"nct_due", "nct_booked", "tax_due", "insurance_due",
-                    "service_interval_km", "service_interval_months", "belt_interval_km", "year", "vin"}
+                    "service_interval_km", "service_interval_months",
+                    "belt_interval_km", "belt_interval_years", "year", "vin"}
         for field in ("name", "reg", "fuel_type", "make", "model", "year", "vin",
                       "nct_due", "nct_booked", "tax_due", "insurance_due",
-                      "service_interval_km", "service_interval_months", "belt_interval_km"):
+                      "service_interval_km", "service_interval_months",
+                      "belt_interval_km", "belt_interval_years"):
             v = getattr(patch, field)
             if v is not None or (field in NULLABLE and field in patch.model_fields_set):
                 sets.append(f"{field}=?"); vals.append(v)
@@ -384,6 +401,9 @@ def car_detail(car_id: int, year: int | None = None):
         svc = service_due(con, car, cur_val)
         if svc:
             car_dues.append({"item": "Service", "date": svc["date"], "days": svc["days"]})
+        bd = belt_due(con, car, cur_val)
+        if bd and bd["date"]:
+            car_dues.append({"item": "Timing belt", "date": bd["date"], "days": bd["days"]})
         car_dues.sort(key=lambda i: i["days"])
         service_log = [dict(r) for r in con.execute(
             "SELECT id, date, odometer, cost, note FROM entries "
@@ -391,7 +411,7 @@ def car_detail(car_id: int, year: int | None = None):
         return {"car": dict(car),
                 "next_due": car_dues[0] if car_dues else None,
                 "service_due": svc,
-                "belt_due": belt_due(con, car, cur_val),
+                "belt_due": bd,
                 "service_log": service_log,
                 "current_odo": cur_val,
                 "summary": year_summary(con, car_id, y),
@@ -507,6 +527,9 @@ def dues():
             svc = service_due(con, car, cur["odometer"] if cur else None)
             if svc:
                 items.append({"car": car["name"], "item": "Service", "date": svc["date"], "days": svc["days"]})
+            bd = belt_due(con, car, cur["odometer"] if cur else None)
+            if bd and bd["date"]:
+                items.append({"car": car["name"], "item": "Timing belt", "date": bd["date"], "days": bd["days"]})
     items.sort(key=lambda i: i["days"])
     return {"items": items, "next_days": items[0]["days"] if items else None}
 
