@@ -312,7 +312,13 @@ def car_detail(car_id: int, year: int | None = None):
         years = [r["y"] for r in con.execute(
             "SELECT DISTINCT substr(date,1,4) y FROM entries WHERE car_id=? ORDER BY y DESC",
             (car_id,))]
+        labels = {"nct_due": "NCT", "nct_booked": "NCT test", "tax_due": "Tax", "insurance_due": "Insurance"}
+        car_dues = sorted(
+            ({"item": lbl, "date": car[f], "days": (date.fromisoformat(car[f]) - date.today()).days}
+             for f, lbl in labels.items() if car[f]),
+            key=lambda i: i["days"])
         return {"car": dict(car),
+                "next_due": car_dues[0] if car_dues else None,
                 "current_odo": cur_odo["odometer"] if cur_odo else None,
                 "summary": year_summary(con, car_id, y),
                 "fuel": fuel_stats(con, car_id),
