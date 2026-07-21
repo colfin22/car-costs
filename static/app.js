@@ -20,12 +20,12 @@ function svcBadge(sd) {
 }
 
 function beltBadge(bd) {
-  if (!bd || bd.km_left === null) return "";
+  // Belts are usually years away — surface only when it actually matters.
+  if (!bd || bd.km_left === null || bd.km_left > 2000) return "";
   const overdue = bd.km_left < 0;
-  const cls = overdue ? "due-red" : bd.km_left <= 2000 ? "due-amber" : "due-ok";
   const txt = overdue ? Math.abs(bd.km_left).toLocaleString() + " km overdue"
-                      : "at " + bd.next_km.toLocaleString() + " km";
-  return `<span class="due ${cls}">Belt ${txt}</span>`;
+                      : "in " + bd.km_left.toLocaleString() + " km";
+  return `<span class="due ${overdue ? "due-red" : "due-amber"}">Belt ${txt}</span>`;
 }
 
 function dueBadge(label, iso) {
