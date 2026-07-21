@@ -196,8 +196,8 @@ function entryDialog(car, cat) {
   const isFuel = cat === "fuel", isCharge = cat === "charge";
   const unitFields = isFuel ? `
       <label>Odometer (km)</label><input name="odometer" type="number" step="1" inputmode="numeric" required>
+      <label>Amount (€)</label><input name="cost" type="number" step="0.01" inputmode="decimal" required>
       <label>Litres</label><input name="litres" type="number" step="0.01" inputmode="decimal" required>
-      <label>Price per litre (€)</label><input name="price_per_litre" type="number" step="0.001" inputmode="decimal" required>
       <div class="hint" id="calc"></div>`
     : isCharge ? `
       <label>Odometer (km)</label><input name="odometer" type="number" step="1" inputmode="numeric">
@@ -236,8 +236,13 @@ function entryDialog(car, cat) {
   if (isFuel || isCharge) {
     const upd = () => {
       const f = new FormData($("form", dlg));
-      const q = parseFloat(f.get(isFuel ? "litres" : "kwh")), p = parseFloat(f.get(isFuel ? "price_per_litre" : "price_per_kwh"));
-      $("#calc", dlg).textContent = q && p ? "Total: " + eur(q * p) : "";
+      if (isFuel) {
+        const cost = parseFloat(f.get("cost")), q = parseFloat(f.get("litres"));
+        $("#calc", dlg).textContent = cost && q ? (cost / q).toFixed(3) + " €/L" : "";
+      } else {
+        const q = parseFloat(f.get("kwh")), p = parseFloat(f.get("price_per_kwh"));
+        $("#calc", dlg).textContent = q && p ? "Total: " + eur(q * p) : "";
+      }
     };
     dlg.addEventListener("input", upd);
   }

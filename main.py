@@ -328,6 +328,8 @@ def add_entry(car_id: int, e: EntryNew):
     cost = e.cost
     if cost is None and e.category == "fuel" and e.litres and e.price_per_litre:
         cost = round(e.litres * e.price_per_litre, 2)
+    if (e.category == "fuel" and e.price_per_litre is None and cost and e.litres):
+        e.price_per_litre = round(cost / e.litres, 3)
     if cost is None and e.category == "charge" and e.kwh and e.price_per_kwh:
         cost = round(e.kwh * e.price_per_kwh, 2)
     if e.category == "odo":
