@@ -104,6 +104,7 @@ venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
 Two placeholder cars are seeded on first run — rename them via **Edit**.
+Configuration is via environment variables — see [.env.example](.env.example).
 
 ### Exposing it to the internet (optional)
 
