@@ -66,7 +66,7 @@ def init_db():
         have = {r["name"] for r in con.execute("PRAGMA table_info(cars)")}
         for col, typ in (("make", "TEXT DEFAULT ''"), ("model", "TEXT DEFAULT ''"),
                          ("year", "INTEGER"), ("vin", "TEXT DEFAULT ''"),
-                         ("nct_due", "TEXT"), ("tax_due", "TEXT"), ("insurance_due", "TEXT"),
+                         ("nct_due", "TEXT"), ("nct_booked", "TEXT"), ("tax_due", "TEXT"), ("insurance_due", "TEXT"),
                          ("photo_ver", "INTEGER NOT NULL DEFAULT 0")):
             if col not in have:
                 con.execute(f"ALTER TABLE cars ADD COLUMN {col} {typ}")
@@ -85,6 +85,7 @@ class CarPatch(BaseModel):
     year: int | None = None
     vin: str | None = None
     nct_due: str | None = None       # YYYY-MM-DD
+    nct_booked: str | None = None    # NCT appointment date, if one is booked
     tax_due: str | None = None
     insurance_due: str | None = None
 
@@ -183,7 +184,7 @@ def edit_car(car_id: int, patch: CarPatch):
         car_or_404(con, car_id)
         sets, vals = [], []
         for field in ("name", "reg", "fuel_type", "make", "model", "year", "vin",
-                      "nct_due", "tax_due", "insurance_due"):
+                      "nct_due", "nct_booked", "tax_due", "insurance_due"):
             v = getattr(patch, field)
             if v is not None:
                 sets.append(f"{field}=?"); vals.append(v)

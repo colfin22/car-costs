@@ -59,7 +59,7 @@ async function showCar(id, year) {
       <div class="row" style="margin-top:10px"><span class="nm">${esc(c.name)}${c.reg ? `<span class="reg">${esc(c.reg)}</span>` : ""}</span>
         <button class="small ghost" id="edit-car">Edit</button></div>
       ${detailBits ? `<div class="muted">${esc(detailBits)}${c.vin ? " · VIN " + esc(c.vin) : ""}</div>` : ""}
-      <div class="dues">${dueBadge("NCT", c.nct_due)}${dueBadge("Tax", c.tax_due)}${dueBadge("Ins", c.insurance_due)}</div>
+      <div class="dues">${dueBadge("NCT", c.nct_due)}${c.nct_booked ? `<span class="due due-booked">NCT test ${c.nct_booked.slice(5)} · booked</span>` : ""}${dueBadge("Tax", c.tax_due)}${dueBadge("Ins", c.insurance_due)}</div>
     </div>
     <div class="card">
       <div class="row" style="margin:0 0 4px">
@@ -160,6 +160,7 @@ function editCarDialog(car) {
     <label>Year</label><input name="year" type="number" min="1980" max="2100" value="${car.year || ""}" placeholder="optional">
     <label>VIN</label><input name="vin" value="${esc(car.vin || "")}" placeholder="optional">
     <label>NCT due</label><input name="nct_due" type="date" value="${car.nct_due || ""}">
+    <label>NCT appointment (if booked)</label><input name="nct_booked" type="date" value="${car.nct_booked || ""}">
     <label>Tax due</label><input name="tax_due" type="date" value="${car.tax_due || ""}">
     <label>Insurance renewal</label><input name="insurance_due" type="date" value="${car.insurance_due || ""}">
     <label>Fuel type</label><select name="fuel_type">
@@ -173,7 +174,8 @@ function editCarDialog(car) {
       body: JSON.stringify({ name: f.get("name"), reg: f.get("reg"),
         make: f.get("make") || "", model: f.get("model") || "", vin: f.get("vin") || "",
         year: f.get("year") ? +f.get("year") : null,
-        nct_due: f.get("nct_due") || null, tax_due: f.get("tax_due") || null,
+        nct_due: f.get("nct_due") || null, nct_booked: f.get("nct_booked") || null,
+        tax_due: f.get("tax_due") || null,
         insurance_due: f.get("insurance_due") || null,
         fuel_type: f.get("fuel_type"), ev_enabled: f.get("ev_enabled") === "on" }) });
     showCar(car.id);
