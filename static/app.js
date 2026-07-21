@@ -106,7 +106,7 @@ async function showCar(id, year) {
 function dialog(html, onSubmit) {
   const dlg = document.createElement("dialog");
   dlg.innerHTML = `<form method="dialog">${html}
-    <div class="dlg-actions"><button class="ghost" value="cancel">Cancel</button>
+    <div class="dlg-actions"><button class="ghost" value="cancel" formnovalidate>Cancel</button>
     <button value="save">Save</button></div></form>`;
   document.body.append(dlg);
   dlg.addEventListener("close", async () => {
