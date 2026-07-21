@@ -72,7 +72,7 @@ cost per year, per km, and what's due next?*
 ## Stack
 
 FastAPI + SQLite (stdlib `sqlite3`, no ORM) + one vanilla-JS page. The database
-and photos live in `data/` (gitignored). ~700 lines all-in.
+and photos live in `data/` (gitignored). ~850 lines all-in.
 
 ## Run
 
