@@ -195,8 +195,8 @@ function dialog(html, onSubmit) {
 function entryDialog(car, cat) {
   const isFuel = cat === "fuel", isCharge = cat === "charge";
   const unitFields = isFuel ? `
-      <label>Odometer (km)</label><input name="odometer" type="number" step="1" inputmode="numeric" required>
       <label>Amount (€)</label><input name="cost" type="number" step="0.01" inputmode="decimal" required>
+      <label>Odometer (km)</label><input name="odometer" type="number" step="1" inputmode="numeric" required>
       <label>Litres</label><input name="litres" type="number" step="0.01" inputmode="decimal" required>
       <div class="hint" id="calc"></div>`
     : isCharge ? `
