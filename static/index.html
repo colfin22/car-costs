@@ -48,6 +48,20 @@ dialog { border: 1px solid var(--line); border-radius: 16px; background: var(--c
 dialog::backdrop { background: rgba(0,0,0,.45); }
 .dlg-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
 .hint { font-size: .85rem; color: var(--muted); margin-top: 8px; }
+.thumb { width: 52px; height: 52px; border-radius: 10px; object-fit: cover; }
+.thumb.ph { display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg); font-size: 1.5rem; }
+.photo-wrap { cursor: pointer; }
+.photo-wrap img { width: 100%; max-height: 240px; object-fit: cover; border-radius: 10px; }
+.ph-big { text-align: center; padding: 26px 0; color: var(--muted); background: var(--bg);
+  border-radius: 10px; font-size: 2rem; }
+.ph-big small { font-size: .85rem; }
+.dues { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.due { font-size: .78rem; padding: 3px 9px; border-radius: 99px; border: 1px solid var(--line); }
+.due-ok { color: var(--muted); }
+.due-amber { color: #7a5900; background: #ffe9b3; border-color: #e6c877; }
+.due-red { color: #fff; background: var(--danger); border-color: var(--danger); }
+@media (prefers-color-scheme: dark) { .due-amber { color: #ffd97a; background: #3a2f12; border-color: #5c4a1e; } }
 .switch { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: .95rem; }
 .switch input { width: auto; }
 </style>

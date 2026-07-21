@@ -10,12 +10,14 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import date
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from PIL import Image, ImageOps
 
 DB_PATH = os.environ.get("CARCOSTS_DB", os.path.join(os.path.dirname(__file__), "data", "carcosts.db"))
+PHOTO_DIR = os.path.join(os.path.dirname(DB_PATH), "photos")
 
 CATEGORIES = ("fuel", "charge", "insurance", "tax", "nct", "service")
 FUEL_TYPES = ("petrol", "diesel", "hybrid", "phev", "ev")
@@ -61,6 +63,13 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_entries_car_date ON entries(car_id, date);
         """)
+        have = {r["name"] for r in con.execute("PRAGMA table_info(cars)")}
+        for col, typ in (("make", "TEXT DEFAULT ''"), ("model", "TEXT DEFAULT ''"),
+                         ("year", "INTEGER"), ("vin", "TEXT DEFAULT ''"),
+                         ("nct_due", "TEXT"), ("tax_due", "TEXT"), ("insurance_due", "TEXT"),
+                         ("photo_ver", "INTEGER NOT NULL DEFAULT 0")):
+            if col not in have:
+                con.execute(f"ALTER TABLE cars ADD COLUMN {col} {typ}")
         if con.execute("SELECT COUNT(*) c FROM cars").fetchone()["c"] == 0:
             con.execute("INSERT INTO cars (name) VALUES ('Car 1')")
             con.execute("INSERT INTO cars (name) VALUES ('Car 2')")
@@ -71,6 +80,13 @@ class CarPatch(BaseModel):
     reg: str | None = None
     fuel_type: str | None = None
     ev_enabled: bool | None = None
+    make: str | None = None
+    model: str | None = None
+    year: int | None = None
+    vin: str | None = None
+    nct_due: str | None = None       # YYYY-MM-DD
+    tax_due: str | None = None
+    insurance_due: str | None = None
 
 
 class CarNew(BaseModel):
@@ -166,7 +182,8 @@ def edit_car(car_id: int, patch: CarPatch):
     with db() as con:
         car_or_404(con, car_id)
         sets, vals = [], []
-        for field in ("name", "reg", "fuel_type"):
+        for field in ("name", "reg", "fuel_type", "make", "model", "year", "vin",
+                      "nct_due", "tax_due", "insurance_due"):
             v = getattr(patch, field)
             if v is not None:
                 sets.append(f"{field}=?"); vals.append(v)
@@ -222,6 +239,34 @@ def delete_entry(entry_id: int):
     with db() as con:
         if con.execute("DELETE FROM entries WHERE id=?", (entry_id,)).rowcount == 0:
             raise HTTPException(404, "no such entry")
+
+
+@app.post("/api/cars/{car_id}/photo")
+async def upload_photo(car_id: int, file: UploadFile):
+    """Store the car's photo (resized); it becomes the card thumbnail and page image."""
+    with db() as con:
+        car_or_404(con, car_id)
+    os.makedirs(PHOTO_DIR, exist_ok=True)
+    try:
+        img = Image.open(file.file)
+        img = ImageOps.exif_transpose(img).convert("RGB")
+    except Exception:
+        raise HTTPException(422, "not a readable image")
+    img.thumbnail((1200, 1200))
+    img.save(os.path.join(PHOTO_DIR, f"{car_id}.jpg"), "JPEG", quality=82)
+    thumb = ImageOps.fit(img, (320, 320))
+    thumb.save(os.path.join(PHOTO_DIR, f"{car_id}.thumb.jpg"), "JPEG", quality=80)
+    with db() as con:
+        con.execute("UPDATE cars SET photo_ver = photo_ver + 1 WHERE id=?", (car_id,))
+        return dict(car_or_404(con, car_id))
+
+
+@app.get("/photos/{name}")
+def photo(name: str):
+    path = os.path.join(PHOTO_DIR, os.path.basename(name))
+    if not os.path.isfile(path):
+        raise HTTPException(404, "no photo")
+    return FileResponse(path)
 
 
 @app.get("/healthz")

@@ -4,6 +4,14 @@ const app = $("#app");
 const eur = n => "€" + Number(n).toLocaleString("en-IE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const today = () => new Date().toISOString().slice(0, 10);
 const CAT_LABELS = { fuel: "Fuel", charge: "Charge", insurance: "Insurance", tax: "Tax", nct: "NCT", service: "Service" };
+const photoUrl = (c, thumb) => c.photo_ver ? `/photos/${c.id}${thumb ? ".thumb" : ""}.jpg?v=${c.photo_ver}` : null;
+function dueBadge(label, iso) {
+  if (!iso) return "";
+  const days = Math.ceil((new Date(iso) - new Date()) / 86400000);
+  const cls = days < 0 ? "due-red" : days <= 30 ? "due-amber" : "due-ok";
+  const txt = days < 0 ? Math.abs(days) + "d overdue" : days + "d";
+  return `<span class="due ${cls}">${label} ${iso.slice(5)} · ${txt}</span>`;
+}
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
@@ -18,7 +26,9 @@ async function showList() {
   app.innerHTML = `<h1>Car Costs <small>${new Date().getFullYear()}</small></h1>` +
     cars.map(c => `
       <div class="card car-card" data-id="${c.id}">
-        <div class="row"><span><span class="nm">${esc(c.name)}</span>` +
+        <div class="row" style="align-items:center">
+          ${photoUrl(c, 1) ? `<img class="thumb" src="${photoUrl(c, 1)}" alt="">` : `<span class="thumb ph">🚗</span>`}
+          <span style="flex:1"><span class="nm">${esc(c.name)}</span>` +
           (c.reg ? `<span class="reg">${esc(c.reg)}</span>` : "") +
         `</span><span class="big">${eur(c.summary.total)}</span></div>
         <div class="row muted"><span>${c.fuel.last_price_per_litre ? "last fill " + c.fuel.last_price_per_litre.toFixed(3) + " €/L" : "no fills yet"}</span>
@@ -38,12 +48,21 @@ async function showCar(id, year) {
     .map(k => `<button data-cat="${k}">+ ${CAT_LABELS[k]}</button>`).join("");
   const yearOpts = (d.years.length ? d.years : [String(s.year)])
     .map(y => `<option ${+y === s.year ? "selected" : ""}>${y}</option>`).join("");
+  const detailBits = [c.year, c.make, c.model].filter(Boolean).join(" ");
   app.innerHTML = `
     <button class="back">&larr; All cars</button>
     <div class="card">
-      <div class="row"><span class="nm">${esc(c.name)}${c.reg ? `<span class="reg">${esc(c.reg)}</span>` : ""}</span>
+      <div class="photo-wrap" id="photo-wrap" title="Tap to change photo">
+        ${photoUrl(c) ? `<img src="${photoUrl(c)}" alt="${esc(c.name)}">` : `<div class="ph-big">🚗<br><small>tap to add a photo</small></div>`}
+      </div>
+      <input type="file" id="photo-file" accept="image/*" hidden>
+      <div class="row" style="margin-top:10px"><span class="nm">${esc(c.name)}${c.reg ? `<span class="reg">${esc(c.reg)}</span>` : ""}</span>
         <button class="small ghost" id="edit-car">Edit</button></div>
-      <div class="row" style="margin:8px 0 4px">
+      ${detailBits ? `<div class="muted">${esc(detailBits)}${c.vin ? " · VIN " + esc(c.vin) : ""}</div>` : ""}
+      <div class="dues">${dueBadge("NCT", c.nct_due)}${dueBadge("Tax", c.tax_due)}${dueBadge("Ins", c.insurance_due)}</div>
+    </div>
+    <div class="card">
+      <div class="row" style="margin:0 0 4px">
         <select id="year-sel" style="width:auto">${yearOpts}</select>
         <span class="big">${eur(s.total)}</span></div>
       ${cats || '<div class="muted">No entries yet — add the first below.</div>'}
@@ -61,6 +80,15 @@ async function showCar(id, year) {
         '<div class="muted">Nothing yet.</div>'}
     </div>`;
   $(".back").addEventListener("click", showList);
+  $("#photo-wrap").addEventListener("click", () => $("#photo-file").click());
+  $("#photo-file").addEventListener("change", async ev => {
+    const file = ev.target.files[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    try { await api(`/api/cars/${id}/photo`, { method: "POST", body: fd }); showCar(id); }
+    catch (e) { alert(e.message); }
+  });
   $("#year-sel").addEventListener("change", ev => showCar(id, ev.target.value));
   $("#edit-car").addEventListener("click", () => editCarDialog(c));
   app.querySelectorAll("[data-cat]").forEach(b =>
@@ -127,6 +155,13 @@ function editCarDialog(car) {
     <h1>Edit car</h1>
     <label>Name</label><input name="name" value="${esc(car.name)}" required>
     <label>Registration</label><input name="reg" value="${esc(car.reg || "")}" placeholder="optional">
+    <label>Make</label><input name="make" value="${esc(car.make || "")}" placeholder="optional">
+    <label>Model</label><input name="model" value="${esc(car.model || "")}" placeholder="optional">
+    <label>Year</label><input name="year" type="number" min="1980" max="2100" value="${car.year || ""}" placeholder="optional">
+    <label>VIN</label><input name="vin" value="${esc(car.vin || "")}" placeholder="optional">
+    <label>NCT due</label><input name="nct_due" type="date" value="${car.nct_due || ""}">
+    <label>Tax due</label><input name="tax_due" type="date" value="${car.tax_due || ""}">
+    <label>Insurance renewal</label><input name="insurance_due" type="date" value="${car.insurance_due || ""}">
     <label>Fuel type</label><select name="fuel_type">
       ${["petrol", "diesel", "hybrid", "phev", "ev"].map(t =>
         `<option ${car.fuel_type === t ? "selected" : ""}>${t}</option>`).join("")}</select>
@@ -136,6 +171,10 @@ function editCarDialog(car) {
     await api(`/api/cars/${car.id}`, { method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: f.get("name"), reg: f.get("reg"),
+        make: f.get("make") || "", model: f.get("model") || "", vin: f.get("vin") || "",
+        year: f.get("year") ? +f.get("year") : null,
+        nct_due: f.get("nct_due") || null, tax_due: f.get("tax_due") || null,
+        insurance_due: f.get("insurance_due") || null,
         fuel_type: f.get("fuel_type"), ev_enabled: f.get("ev_enabled") === "on" }) });
     showCar(car.id);
   });
