@@ -1,64 +1,104 @@
+<div align="center">
+
+<img src="static/icon.svg" width="88" alt="Car Costs icon">
+
 # Car Costs
 
-A small self-hosted running-costs tracker for the household cars. Open it, tap a
-car, add the entry — that's the whole workflow, designed to be done at the pump.
+*A tiny self-hosted tracker for what your cars actually cost — built to be used
+one-handed at the pump.*
+
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-SQLite-009688?logo=fastapi&logoColor=white)
+![PWA](https://img.shields.io/badge/PWA-installable-5A0FC8)
+![Home Assistant](https://img.shields.io/badge/Home%20Assistant-integrated-41BDF5?logo=homeassistant&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
+
+<a href="https://buymeacoffee.com/colfin22"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee"></a>
+
+</div>
+
+Open it, tap a car, add the entry. That's the entire workflow. Everything else —
+efficiency stats, renewal reminders, NCT lifecycle, Home Assistant sensors —
+falls out of the data you'd capture anyway.
+
+## Why
+
+Fuel apps want accounts and ads; spreadsheets die of neglect by February. This
+is the middle ground: one small self-hosted page, fast enough to use in the
+forecourt, that answers the questions you actually ask — *what does this car
+cost per year, per km, and what's due next?*
 
 ## Features
 
-- **Fuel fills** the way people actually buy fuel: amount (€) + odometer, litres
-  optional — €/L is derived when litres are given, and the app computes fuel
-  efficiency (L/100km from consecutive fills) and cost per km. Odometer readings
-  are validated against the timeline (no backwards or impossible values, with
-  backdating fully supported).
-- **Insurance, motor tax, NCT and servicing/repairs** as dated amounts, freely
-  backdatable, with per-year totals by category.
-- **Standalone mileage entries** — log the current odometer any time; the newest
-  reading (from any entry) shows on the car's page and feeds the stats.
-- **Car status page** per car: tap-to-upload photo (resized server-side; doubles
-  as the car's thumbnail on the home screen), make/model/year/VIN, and due-date
-  badges for NCT, a booked NCT test (with days-away countdown), tax and insurance
-  — amber inside 30 days, red when overdue.
-- **Renewal banners**: from 14 days before a due date the car page prompts
-  "renewed?" with a one-tap dialog (new date + optional amount, logged as a cost
-  entry). Renewing early through any route means the banner never appears.
-- **NCT lifecycle**: booking a test offers to log the test fee (dated the booking
-  day); the day after the test a banner asks the result — pass sets the new
+**Logging, the way it really happens**
+- Fuel fills are amount (€) + odometer; litres optional (€/L derived when
+  given). Insurance, motor tax, NCT and servicing are dated amounts, freely
+  backdatable — start mid-year and enter January's insurance on day one.
+- Standalone mileage entries: log the odometer any time; the newest reading
+  shows on the car's page and feeds the stats.
+- Odometer readings are validated against the timeline — no backwards or
+  impossible values, with backdating fully supported (a reading must simply fit
+  between its neighbours in date order).
+
+**A status page per car**
+- Tap-to-upload photo (resized server-side, doubles as the home-screen
+  thumbnail), make/model/year/VIN, and badges for NCT due, a booked NCT test
+  (with countdown), tax and insurance — amber inside 30 days, red overdue.
+- Stats as data accrues: year total by category, cost per km, L/100km from
+  consecutive fills, current mileage.
+
+**Renewals that close the loop**
+- From 14 days before a due date the car's page prompts *"renewed?"* — one
+  dialog captures the new date and (optionally) what you paid. Renew early via
+  any route and the prompt never appears.
+- Full NCT lifecycle: booking a test offers to log the fee (dated the booking
+  day); after the test date a banner asks the result — pass sets the new
   expiry, fail offers a paid rebooking or a free visual-only retest, and the
   cycle repeats.
-- **EV-ready:** flip a car's "electric charging entries" toggle and it gains a
-  kWh + price-per-kWh entry form — the schema supports it from day one, so a
-  future EV or PHEV needs no migration.
-- **Add and retire cars**: retiring keeps all history (greyed "Retired" section,
-  restorable) — replacing a car never loses its costs.
-- **Optional password gate** for internet-facing use: set `CARCOSTS_PASSWORD` in
-  the environment and any request arriving via a reverse proxy/tunnel (detected
-  by the `Cf-Connecting-Ip` header or a non-private peer address) must log in —
-  a 30-day HMAC session cookie (`SameSite=None; Secure` so it survives being
-  iframed), while internal direct-IP callers (monitoring, Home Assistant
-  sensors) stay exempt. Rotating the password invalidates all sessions.
-- Installable as a home-screen PWA (icon + manifest included). Dates display
-  day-first (DD/MM/YY). Mobile-first single page, light/dark, no build step.
+
+**Lives quietly in your stack**
+- **Home Assistant**: REST sensors for per-car year cost, mileage, efficiency,
+  cost/km and days-to-next-due, plus a two-line automation for 30-day/7-day
+  phone reminders (examples below).
+- **EV-ready**: flip a car's electric toggle and it gains kWh × €/kWh charge
+  entries — and the matching HA charge-cost sensor brings itself to life. No
+  migration when a car goes electric.
+- **Cars come and go**: add cars in the UI; retiring a replaced car keeps its
+  full history in a restorable "Retired" section.
+- **Optional password gate** for internet-facing use (details below), exempting
+  internal monitoring/sensor callers. Installable as a home-screen PWA. Dates
+  day-first. Light/dark. No build step, no accounts, no cloud.
 
 ## Stack
 
-FastAPI + SQLite (stdlib `sqlite3`, no ORM) + a vanilla-JS static page. The
-database and photos live in `data/` (gitignored).
+FastAPI + SQLite (stdlib `sqlite3`, no ORM) + one vanilla-JS page. The database
+and photos live in `data/` (gitignored). ~700 lines all-in.
 
 ## Run
 
 ```bash
-python3 -m venv venv && venv/bin/pip install fastapi "uvicorn[standard]" pillow python-multipart
+python3 -m venv venv
+venv/bin/pip install fastapi "uvicorn[standard]" pillow python-multipart
 venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-Two placeholder cars are seeded on first run — rename them via the Edit button.
+Two placeholder cars are seeded on first run — rename them via **Edit**.
 
-## Home Assistant integration
+### Exposing it to the internet (optional)
 
-**Renewal reminders:** the `/api/dues` endpoint returns every upcoming
-NCT/test/tax/insurance date with a day count, shaped for a REST sensor. One
-sensor plus one automation gives 30-day and 7-day phone nudges — all wording
-and routing stays in Home Assistant:
+Set `CARCOSTS_PASSWORD` in the environment and any request arriving through a
+reverse proxy or tunnel (detected via the `Cf-Connecting-Ip` header, or any
+non-private peer address) must log in: a 30-day HMAC session cookie
+(`SameSite=None; Secure`, so it survives being iframed in a dashboard), while
+direct internal callers — monitoring, Home Assistant sensors — stay exempt.
+Rotating the password invalidates every session. Publish the hostname only
+after the password is set.
+
+## Home Assistant
+
+**Renewal reminders** — `/api/dues` returns every upcoming NCT/test/tax/
+insurance date with a day count, shaped for a REST sensor; one automation gives
+30-day and 7-day nudges with all wording and routing kept in Home Assistant:
 
 ```yaml
 rest:
@@ -94,19 +134,19 @@ automation:
                 message: "{{ msg }}"
 ```
 
-**Per-car stats sensors:** each car's detail endpoint (`/api/cars/<id>`,
-including a `next_due` object) feeds a second REST resource per car exposing
-year cost (category breakdown as attributes), current mileage, fuel efficiency,
-cost per km and days-to-next-due. Templates use `availability` for the empty
-cases (a numeric-unit REST sensor must never render a placeholder string — the
-entity fails to register). A charge-cost sensor gated on
-`{{ value_json.car.ev_enabled == 1 }}` comes alive by itself when a car goes
-electric. Note the resources reference car ids, so a replacement car means
-repointing one resource.
+**Per-car stats** — each car's `/api/cars/<id>` response (including a
+`next_due` object) feeds one REST resource per car exposing year cost (category
+breakdown as attributes), mileage, L/100km, cost/km and days-to-next-due. Two
+tips from a real deployment: use `availability:` templates for the
+not-yet-populated cases (a numeric-unit REST sensor that renders a placeholder
+string fails to register at all), and gate a charge-cost sensor on
+`{{ value_json.car.ev_enabled == 1 }}` so it activates itself when a car goes
+electric. The resources reference car ids — a replacement car means repointing
+one resource.
 
-For a sidebar tab, add a dashboard with a full-page `iframe` card pointing at
-the app (https required if your Home Assistant is served over https). A
-home-screen PWA install is the better phone experience.
+For a dashboard tab, a full-page `iframe` card pointing at the app works
+(https required if your Home Assistant is https) — though the home-screen PWA
+is the nicer phone experience.
 
 ## API
 
@@ -115,3 +155,7 @@ home-screen PWA install is the better phone experience.
 `GET /api/cars/{id}?year=` · `POST /api/cars/{id}/entries` ·
 `DELETE /api/entries/{id}` · `POST /api/cars/{id}/photo` ·
 `GET /api/dues` · `GET /healthz`
+
+## Licence
+
+[MIT](LICENSE)
