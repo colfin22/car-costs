@@ -36,6 +36,28 @@ async function showList() {
         <div class="row muted"><span>${c.fuel.last_price_per_litre ? "last fill " + c.fuel.last_price_per_litre.toFixed(3) + " €/L" : "no fills yet"}</span>
         <span>${c.fuel.l_per_100km ? c.fuel.l_per_100km + " L/100km" : ""}</span></div>
       </div>`).join("");
+  const all = await api("/api/cars?include_archived=true");
+  const retired = all.filter(c => c.archived);
+  app.insertAdjacentHTML("beforeend",
+    `<button class="ghost" id="add-car" style="width:100%">+ Add car</button>` +
+    (retired.length ? `<div class="muted" style="margin-top:12px">Retired</div>` +
+      retired.map(c => `
+        <div class="card car-card retired" data-id="${c.id}">
+          <div class="row"><span class="nm">${esc(c.name)}</span>
+          <span class="muted">retired · ${eur(c.summary.total)} this year</span></div>
+        </div>`).join("") : ""));
+  $("#add-car").addEventListener("click", () => dialog(`
+    <h1>Add car</h1>
+    <label>Name</label><input name="name" required>
+    <label>Registration</label><input name="reg" placeholder="optional">
+    <label>Fuel type</label><select name="fuel_type">
+      ${["petrol", "diesel", "hybrid", "phev", "ev"].map(t => `<option>${t}</option>`).join("")}</select>`,
+    async d => {
+      const f = new FormData($("form", d));
+      await api("/api/cars", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: f.get("name"), reg: f.get("reg") || "", fuel_type: f.get("fuel_type") }) });
+      showList();
+    }));
   app.querySelectorAll(".car-card").forEach(el =>
     el.addEventListener("click", () => showCar(+el.dataset.id)));
 }
@@ -249,7 +271,7 @@ function entryDialog(car, cat) {
 }
 
 function editCarDialog(car) {
-  dialog(`
+  const dlg = dialog(`
     <h1>Edit car</h1>
     <label>Name</label><input name="name" value="${esc(car.name)}" required>
     <label>Registration</label><input name="reg" value="${esc(car.reg || "")}" placeholder="optional">
@@ -265,7 +287,8 @@ function editCarDialog(car) {
       ${["petrol", "diesel", "hybrid", "phev", "ev"].map(t =>
         `<option ${car.fuel_type === t ? "selected" : ""}>${t}</option>`).join("")}</select>
     <div class="switch"><input type="checkbox" name="ev_enabled" id="evt" ${car.ev_enabled ? "checked" : ""}>
-      <label for="evt" style="margin:0">Electric charging entries</label></div>`, async d => {
+      <label for="evt" style="margin:0">Electric charging entries</label></div>
+    <button type="button" class="danger" id="retire-car" style="margin-top:14px">${car.archived ? "Restore this car" : "Retire this car (history kept)"}</button>`, async d => {
     const f = new FormData($("form", d));
     const newBooked = f.get("nct_booked") || null;
     await api(`/api/cars/${car.id}`, { method: "PATCH",
@@ -290,6 +313,14 @@ function editCarDialog(car) {
         showCar(car.id);
       });
     } else showCar(car.id);
+  });
+  $("#retire-car", dlg).addEventListener("click", async () => {
+    const verb = car.archived ? "Restore" : "Retire";
+    if (!confirm(verb + " " + car.name + "?" + (car.archived ? "" : " All history is kept; it moves to the Retired list."))) return;
+    await api(`/api/cars/${car.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ archived: !car.archived }) });
+    dlg.close("cancel");
+    showList();
   });
 }
 

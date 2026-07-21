@@ -170,7 +170,8 @@ def init_db():
         for col, typ in (("make", "TEXT DEFAULT ''"), ("model", "TEXT DEFAULT ''"),
                          ("year", "INTEGER"), ("vin", "TEXT DEFAULT ''"),
                          ("nct_due", "TEXT"), ("nct_booked", "TEXT"), ("tax_due", "TEXT"), ("insurance_due", "TEXT"),
-                         ("photo_ver", "INTEGER NOT NULL DEFAULT 0")):
+                         ("photo_ver", "INTEGER NOT NULL DEFAULT 0"),
+                         ("archived", "INTEGER NOT NULL DEFAULT 0")):
             if col not in have:
                 con.execute(f"ALTER TABLE cars ADD COLUMN {col} {typ}")
         if con.execute("SELECT COUNT(*) c FROM cars").fetchone()["c"] == 0:
@@ -187,6 +188,7 @@ class CarPatch(BaseModel):
     model: str | None = None
     year: int | None = None
     vin: str | None = None
+    archived: bool | None = None
     nct_due: str | None = None       # YYYY-MM-DD
     nct_booked: str | None = None    # NCT appointment date, if one is booked
     tax_due: str | None = None
@@ -261,12 +263,13 @@ def fuel_stats(con, car_id: int):
 
 
 @app.get("/api/cars")
-def list_cars():
+def list_cars(include_archived: bool = False):
     year = date.today().year
+    where = "" if include_archived else "WHERE archived = 0"
     with db() as con:
         return [dict(c) | {"summary": year_summary(con, c["id"], year),
                            "fuel": fuel_stats(con, c["id"])}
-                for c in con.execute("SELECT * FROM cars ORDER BY id")]
+                for c in con.execute(f"SELECT * FROM cars {where} ORDER BY id")]
 
 
 @app.post("/api/cars", status_code=201)
@@ -293,6 +296,8 @@ def edit_car(car_id: int, patch: CarPatch):
                 sets.append(f"{field}=?"); vals.append(v)
         if patch.ev_enabled is not None:
             sets.append("ev_enabled=?"); vals.append(int(patch.ev_enabled))
+        if patch.archived is not None:
+            sets.append("archived=?"); vals.append(int(patch.archived))
         if sets:
             con.execute(f"UPDATE cars SET {', '.join(sets)} WHERE id=?", (*vals, car_id))
         return dict(car_or_404(con, car_id))
@@ -416,7 +421,7 @@ def dues():
     items = []
     today_d = date.today()
     with db() as con:
-        for car in con.execute("SELECT * FROM cars ORDER BY id"):
+        for car in con.execute("SELECT * FROM cars WHERE archived = 0 ORDER BY id"):
             for field, label in labels.items():
                 v = car[field]
                 if v:
