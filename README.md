@@ -113,7 +113,8 @@ venv/bin/pip install fastapi "uvicorn[standard]" pillow python-multipart
 venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-Two placeholder cars are seeded on first run — rename them via **Edit**.
+One placeholder car is seeded on first run — rename it via **Edit**, and add
+more with **+ Add car**.
 Configuration is via environment variables — see [.env.example](.env.example).
 
 ### Exposing it to the internet (optional)

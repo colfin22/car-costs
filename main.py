@@ -179,8 +179,7 @@ def init_db():
             if col not in have:
                 con.execute(f"ALTER TABLE cars ADD COLUMN {col} {typ}")
         if con.execute("SELECT COUNT(*) c FROM cars").fetchone()["c"] == 0:
-            con.execute("INSERT INTO cars (name) VALUES ('Car 1')")
-            con.execute("INSERT INTO cars (name) VALUES ('Car 2')")
+            con.execute("INSERT INTO cars (name) VALUES ('My Car')")
 
 
 class CarPatch(BaseModel):
