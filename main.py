@@ -37,7 +37,8 @@ app = FastAPI(title="Car Costs")
 # only internet route is the tunnel, and Cloudflare always stamps its header.
 AUTH_COOKIE = "carcosts_auth"
 SESSION_DAYS = 30
-PUBLIC_PATHS = {"/login", "/healthz", "/favicon.ico"}
+PUBLIC_PATHS = {"/login", "/healthz", "/favicon.ico", "/static/icon.svg",
+                "/static/icon-192.png", "/static/icon-512.png", "/static/manifest.json"}
 
 
 def _secret() -> str:
@@ -94,6 +95,11 @@ async def auth_gate(request, call_next):
             return JSONResponse({"detail": "auth required"}, status_code=401)
         return RedirectResponse("/login", status_code=302)
     return await call_next(request)
+
+
+@app.get("/favicon.ico")
+def favicon():
+    return FileResponse(os.path.join(os.path.dirname(__file__), "static", "icon.svg"), media_type="image/svg+xml")
 
 
 @app.get("/login")
