@@ -138,53 +138,23 @@ after the password is set.
 
 ## Home Assistant
 
-**Renewal reminders** — `/api/dues` returns every upcoming NCT/test/tax/
-insurance date with a day count, shaped for a REST sensor; one automation gives
-30-day and 7-day nudges with all wording and routing kept in Home Assistant:
+A ready-to-use package lives at
+[examples/car_costs.yaml](examples/car_costs.yaml) — drop it into your
+`packages/` folder, set the app host and your notify service, and you get:
 
-```yaml
-rest:
-  - resource: http://<app-host>:8000/api/dues
-    scan_interval: 3600
-    sensor:
-      - name: Car costs next due
-        unique_id: car_costs_next_due
-        value_template: "{{ value_json.next_days }}"
-        unit_of_measurement: d
-        json_attributes:
-          - items
+- **Renewal reminders** — a REST sensor on `/api/dues` (every upcoming
+  NCT/test/tax/insurance date with a day count) plus one automation for 30-day
+  and 7-day phone nudges, with all wording and routing kept in Home Assistant.
+- **Per-car stats** — each car's `/api/cars/<id>` response feeds one REST
+  resource exposing year cost (category breakdown as attributes), mileage,
+  L/100km, cost/km and days-to-next-due; duplicate the block per car.
 
-automation:
-  - id: car_costs_due_reminders
-    alias: Car costs - renewal reminders (30d/7d)
-    triggers:
-      - trigger: time
-        at: "09:00:00"
-    actions:
-      - repeat:
-          for_each: >-
-            {{ state_attr('sensor.car_costs_next_due', 'items')
-               | selectattr('days', 'in', [30, 7]) | list }}
-          sequence:
-            - variables:
-                msg: >-
-                  {{ repeat.item.car }}: {{ repeat.item.item }} due
-                  {{ repeat.item.date }} ({{ repeat.item.days }} days)
-            - action: notify.mobile_app_your_phone
-              data:
-                title: Car reminder
-                message: "{{ msg }}"
-```
-
-**Per-car stats** — each car's `/api/cars/<id>` response (including a
-`next_due` object) feeds one REST resource per car exposing year cost (category
-breakdown as attributes), mileage, L/100km, cost/km and days-to-next-due. Two
-tips from a real deployment: use `availability:` templates for the
-not-yet-populated cases (a numeric-unit REST sensor that renders a placeholder
-string fails to register at all), and gate a charge-cost sensor on
-`{{ value_json.car.ev_enabled == 1 }}` so it activates itself when a car goes
-electric. The resources reference car ids — a replacement car means repointing
-one resource.
+Two tips from a real deployment, already baked into the example: use
+`availability:` templates for the not-yet-populated cases (a numeric-unit REST
+sensor that renders a placeholder string fails to register at all), and gate a
+charge-cost sensor on `{{ value_json.car.ev_enabled == 1 }}` so it activates
+itself when a car goes electric. The resources reference car ids — a
+replacement car means repointing one resource.
 
 For a dashboard tab, a full-page `iframe` card pointing at the app works
 (https required if your Home Assistant is https) — though the home-screen PWA

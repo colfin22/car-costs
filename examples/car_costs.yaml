@@ -1,0 +1,97 @@
+# Car Costs — Home Assistant package: renewal reminders + per-car stats sensors.
+#
+# Drop this file into your HA config's packages/ folder (needs
+#   homeassistant:
+#     packages: !include_dir_named packages
+# in configuration.yaml), replace <app-host> and the notify service, then run a
+# config check and reload REST entities + automations (no restart needed).
+#
+# Notes:
+# - Automations defined in a package show "cannot be edited from the UI" in HA.
+#   That's normal for YAML packages — edit this file and reload instead.
+# - Numeric REST sensors must not template to 'unknown' — a non-numeric state
+#   fails entity setup entirely. That's what the availability: templates are
+#   for; efficiency/cost-per-km sit unavailable until enough data accrues.
+# - unique_ids key on the car id (car1, car2, …), so renaming a car in the app
+#   never orphans the HA entities.
+# - The charge-cost sensor is EV-ready: its availability tracks the app's
+#   per-car electric toggle, so it comes alive by itself when a car goes
+#   electric. No edit needed.
+
+rest:
+  # Upcoming NCT/test/tax/insurance dates across all cars, for the reminders.
+  - resource: http://<app-host>:8000/api/dues
+    scan_interval: 3600
+    sensor:
+      - name: Car costs next due
+        unique_id: car_costs_next_due
+        value_template: "{{ value_json.next_days }}"
+        unit_of_measurement: d
+        json_attributes:
+          - items
+
+  # Per-car stats. Duplicate this whole block per car and set the car id in the
+  # resource URL, the sensor names and the unique_ids (car1 → car2, …).
+  - resource: http://<app-host>:8000/api/cars/1
+    scan_interval: 3600
+    sensor:
+      - name: Family car year cost
+        unique_id: car_costs_car1_year_total
+        value_template: "{{ value_json.summary.total }}"
+        unit_of_measurement: "€"
+        json_attributes_path: $.summary
+        json_attributes:
+          - by_category
+          - year
+          - km_driven
+      - name: Family car mileage
+        unique_id: car_costs_car1_mileage
+        value_template: "{{ value_json.current_odo | round(0) }}"
+        unit_of_measurement: km
+        availability: "{{ value_json.current_odo is not none }}"
+      - name: Family car fuel efficiency
+        unique_id: car_costs_car1_l100km
+        value_template: "{{ value_json.fuel.l_per_100km }}"
+        unit_of_measurement: L/100km
+        availability: "{{ value_json.fuel.l_per_100km is not none }}"
+      - name: Family car cost per km
+        unique_id: car_costs_car1_cost_per_km
+        value_template: "{{ (value_json.summary.cost_per_km * 100) | round(1) }}"
+        unit_of_measurement: c/km
+        availability: "{{ value_json.summary.cost_per_km is not none }}"
+      - name: Family car next due
+        unique_id: car_costs_car1_next_due
+        value_template: "{{ value_json.next_due.days }}"
+        unit_of_measurement: d
+        json_attributes_path: $.next_due
+        json_attributes:
+          - item
+          - date
+        availability: "{{ value_json.next_due is not none }}"
+      - name: Family car charge cost
+        unique_id: car_costs_car1_charge_total
+        value_template: "{{ value_json.summary.by_category.charge | default(0) }}"
+        unit_of_measurement: "€"
+        availability: "{{ value_json.car.ev_enabled == 1 }}"
+
+automation:
+  - id: car_costs_due_reminders
+    alias: Car costs - renewal reminders (30d/7d)
+    triggers:
+      - trigger: time
+        at: "09:00:00"
+    actions:
+      - repeat:
+          for_each: >-
+            {{ state_attr('sensor.car_costs_next_due', 'items')
+               | selectattr('days', 'in', [30, 7]) | list }}
+          sequence:
+            - variables:
+                msg: >-
+                  {{ repeat.item.car }}: {{ repeat.item.item }} due
+                  {{ repeat.item.date }} ({{ repeat.item.days }} days)
+            # Add one action per phone that should get the nudge.
+            - action: notify.mobile_app_your_phone
+              data:
+                title: Car reminder
+                message: "{{ msg }}"
