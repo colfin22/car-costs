@@ -7,6 +7,18 @@ const dmy = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`;
 const dm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 const CAT_LABELS = { fuel: "Fuel", charge: "Charge", insurance: "Insurance", tax: "Tax", nct: "NCT", service: "Service", odo: "Mileage" };
 const photoUrl = (c, thumb) => c.photo_ver ? `/photos/${c.id}${thumb ? ".thumb" : ""}.jpg?v=${c.photo_ver}` : null;
+function svcBadge(sd) {
+  if (!sd) return "";
+  const kmSide = sd.binding === "km";
+  const overdue = kmSide ? sd.km_left < 0 : sd.days < 0;
+  const soon = kmSide ? sd.km_left <= 1000 : sd.days <= 30;
+  const cls = overdue ? "due-red" : soon ? "due-amber" : "due-ok";
+  const txt = kmSide
+    ? (overdue ? Math.abs(sd.km_left).toLocaleString() + " km overdue" : "in " + sd.km_left.toLocaleString() + " km")
+    : dmy(sd.date) + " · " + (overdue ? Math.abs(sd.days) + "d overdue" : sd.days + "d");
+  return `<span class="due ${cls}">Service ${txt}</span>`;
+}
+
 function dueBadge(label, iso) {
   if (!iso) return "";
   const days = Math.ceil((new Date(iso) - new Date()) / 86400000);
@@ -67,12 +79,24 @@ if (deepLink) showCar(+deepLink[1]); else showList();
 /* ---------- due/result banners ---------- */
 function daysTo(iso) { return Math.round((new Date(iso) - new Date(today())) / 86400000); }
 
-function bannersHtml(c) {
+function bannersHtml(c, sd) {
   const out = [];
   if (c.nct_booked && c.nct_booked < today())
     out.push(`<div class="card banner" data-banner="nct-result">NCT test was ${dmy(c.nct_booked)} — result?
       <div class="banner-actions"><button class="small" data-act="nct-pass">Passed</button>
       <button class="small ghost" data-act="nct-fail">Failed</button></div></div>`);
+  if (sd) {
+    const kmSide = sd.binding === "km";
+    const overdue = kmSide ? sd.km_left < 0 : sd.days < 0;
+    const soon = kmSide ? sd.km_left <= 1000 : sd.days <= 14;
+    if (overdue || soon) {
+      const when = kmSide
+        ? (overdue ? Math.abs(sd.km_left).toLocaleString() + " km overdue" : sd.km_left.toLocaleString() + " km left")
+        : (overdue ? Math.abs(sd.days) + "d overdue" : "due " + dmy(sd.date));
+      out.push(`<div class="card banner">Service due (${when}) — done?
+        <div class="banner-actions"><button class="small" data-act="svc-done">Log service…</button></div></div>`);
+    }
+  }
   const dues = [["nct_due", "NCT"], ["tax_due", "Tax"], ["insurance_due", "Insurance"]];
   for (const [field, label] of dues) {
     if (!c[field]) continue;
@@ -89,6 +113,7 @@ function bannersHtml(c) {
 function wireBanners(car) {
   app.querySelectorAll("[data-act]").forEach(b => b.addEventListener("click", () => {
     const act = b.dataset.act;
+    if (act === "svc-done") { entryDialog(car, "service"); return; }
     if (act === "nct-pass") dialog(`
       <h1>NCT passed — ${esc(car.name)}</h1>
       <label>New NCT expiry</label><input name="due" type="date" required>`, async d => {
@@ -160,9 +185,9 @@ async function showCar(id, year) {
         <button class="small ghost" id="edit-car">Edit</button></div>
       ${detailBits ? `<div class="muted">${esc(detailBits)}${c.vin ? " · VIN " + esc(c.vin) : ""}</div>` : ""}
       ${d.current_odo ? `<div class="muted" style="margin-top:4px">Mileage: ${Math.round(d.current_odo).toLocaleString()} km</div>` : ""}
-      <div class="dues">${dueBadge("NCT", c.nct_due)}${c.nct_booked ? `<span class="due due-booked">NCT test ${dmy(c.nct_booked)} · ${daysTo(c.nct_booked) >= 0 ? daysTo(c.nct_booked) + "d" : "awaiting result"}</span>` : ""}${dueBadge("Tax", c.tax_due)}${dueBadge("Ins", c.insurance_due)}</div>
+      <div class="dues">${svcBadge(d.service_due)}${dueBadge("NCT", c.nct_due)}${c.nct_booked ? `<span class="due due-booked">NCT test ${dmy(c.nct_booked)} · ${daysTo(c.nct_booked) >= 0 ? daysTo(c.nct_booked) + "d" : "awaiting result"}</span>` : ""}${dueBadge("Tax", c.tax_due)}${dueBadge("Ins", c.insurance_due)}</div>
     </div>
-    ${bannersHtml(c)}
+    ${bannersHtml(c, d.service_due)}
     <div class="card">
       <div class="row" style="margin:0 0 4px">
         <select id="year-sel" style="width:auto">${yearOpts}</select>
@@ -180,7 +205,14 @@ async function showCar(id, year) {
           ${e.kwh ? e.kwh + "kWh" : ""} ${esc(e.note || "")}</span>
         <span>${e.category === "odo" ? Math.round(e.odometer).toLocaleString() + " km" : eur(e.cost)} <button class="danger" data-del="${e.id}">✕</button></span></div>`).join("") ||
         '<div class="muted">Nothing yet.</div>'}
-    </div>`;
+    </div>
+    ${d.service_log && d.service_log.length ? `
+    <div class="card"><div class="muted" style="margin-bottom:4px">Service history</div>
+      ${d.service_log.map(s => `
+        <div class="entry"><span>${dmy(s.date)}${s.odometer ? " · " + Math.round(s.odometer).toLocaleString() + " km" : ""}<br>
+          <span class="muted">${esc(s.note || "—")}</span></span>
+        <span>${eur(s.cost)}</span></div>`).join("")}
+    </div>` : ""}`;
   $(".back").addEventListener("click", showList);
   $("#photo-wrap").addEventListener("click", () => $("#photo-file").click());
   $("#photo-file").addEventListener("change", async ev => {
@@ -232,8 +264,9 @@ function entryDialog(car, cat) {
     : cat === "odo" ? `
       <label>Odometer (km)</label><input name="odometer" type="number" step="1" inputmode="numeric" required>`
     : cat === "service" ? `
+      <label>Work done</label><textarea name="note" rows="3" required placeholder="e.g. full service — oil, filters, rear pads"></textarea>
       <label>Amount (€)</label><input name="cost" type="number" step="0.01" inputmode="decimal" required>
-      <label>Note</label><input name="note" placeholder="e.g. tyres, 2 front">`
+      <label>Odometer (km) — optional, anchors the service interval</label><input name="odometer" type="number" step="1" inputmode="numeric">`
     : `<label>Amount (€) — leave blank if only setting the date</label><input name="cost" type="number" step="0.01" inputmode="decimal">
        <label>${{ tax: "New tax expiry", nct: "New NCT due date", insurance: "New renewal date" }[cat]} (optional)</label><input name="due" type="date">
        <label>Note</label><input name="note" placeholder="optional">`;
@@ -286,6 +319,8 @@ function editCarDialog(car) {
     <label>NCT appointment (if booked)</label><input name="nct_booked" type="date" value="${car.nct_booked || ""}">
     <label>Tax due</label><input name="tax_due" type="date" value="${car.tax_due || ""}">
     <label>Insurance renewal</label><input name="insurance_due" type="date" value="${car.insurance_due || ""}">
+    <label>Service interval (km)</label><input name="service_interval_km" type="number" step="500" inputmode="numeric" value="${car.service_interval_km || ""}" placeholder="e.g. 15000">
+    <label>Service interval (months)</label><input name="service_interval_months" type="number" inputmode="numeric" value="${car.service_interval_months || ""}" placeholder="12 (default)">
     <label>Fuel type</label><select name="fuel_type">
       ${["petrol", "diesel", "hybrid", "phev", "ev"].map(t =>
         `<option ${car.fuel_type === t ? "selected" : ""}>${t}</option>`).join("")}</select>
@@ -300,6 +335,8 @@ function editCarDialog(car) {
         make: f.get("make") || "", model: f.get("model") || "", vin: f.get("vin") || "",
         year: f.get("year") ? +f.get("year") : null,
         nct_due: f.get("nct_due") || null, nct_booked: newBooked,
+        service_interval_km: f.get("service_interval_km") ? +f.get("service_interval_km") : null,
+        service_interval_months: f.get("service_interval_months") ? +f.get("service_interval_months") : null,
         tax_due: f.get("tax_due") || null,
         insurance_due: f.get("insurance_due") || null,
         fuel_type: f.get("fuel_type"), ev_enabled: f.get("ev_enabled") === "on" }) });

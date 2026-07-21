@@ -53,6 +53,15 @@ cost per year, per km, and what's due next?*
 - Stats as data accrues: year total by category, cost per km, L/100km from
   consecutive fills, current mileage.
 
+**Service log & interval**
+- Every service records what was actually carried out — a per-car service
+  history (date, odometer, work done, cost) on the status page.
+- Set a per-car service interval — km and/or months (12-month default) — and
+  the app derives "service due" from the last service, **whichever deadline
+  comes first**: badge ("Service in 800 km" / "Service 14/03/27 · 236d"),
+  banner when close or overdue, and the time deadline joins the reminder feed.
+  Logging a service resets both clocks.
+
 **Renewals that close the loop**
 - From 14 days before a due date the car's page prompts *"renewed?"* — one
   dialog captures the new date and (optionally) what you paid. Renew early via

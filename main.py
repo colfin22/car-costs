@@ -171,7 +171,9 @@ def init_db():
                          ("year", "INTEGER"), ("vin", "TEXT DEFAULT ''"),
                          ("nct_due", "TEXT"), ("nct_booked", "TEXT"), ("tax_due", "TEXT"), ("insurance_due", "TEXT"),
                          ("photo_ver", "INTEGER NOT NULL DEFAULT 0"),
-                         ("archived", "INTEGER NOT NULL DEFAULT 0")):
+                         ("archived", "INTEGER NOT NULL DEFAULT 0"),
+                         ("service_interval_km", "INTEGER"),
+                         ("service_interval_months", "INTEGER")):
             if col not in have:
                 con.execute(f"ALTER TABLE cars ADD COLUMN {col} {typ}")
         if con.execute("SELECT COUNT(*) c FROM cars").fetchone()["c"] == 0:
@@ -189,6 +191,8 @@ class CarPatch(BaseModel):
     year: int | None = None
     vin: str | None = None
     archived: bool | None = None
+    service_interval_km: int | None = None
+    service_interval_months: int | None = None
     nct_due: str | None = None       # YYYY-MM-DD
     nct_booked: str | None = None    # NCT appointment date, if one is booked
     tax_due: str | None = None
@@ -211,6 +215,36 @@ class EntryNew(BaseModel):
     price_per_kwh: float | None = None
     cost: float | None = None    # derived for fuel/charge when omitted
     note: str = ""
+
+
+def add_months(d: date, months: int) -> date:
+    y, mo = d.year + (d.month - 1 + months) // 12, (d.month - 1 + months) % 12 + 1
+    from calendar import monthrange
+    return date(y, mo, min(d.day, monthrange(y, mo)[1]))
+
+
+def service_due(con, car, current_odo):
+    """Two deadlines from the last service — time (default 12 months) and km —
+    whichever comes first is binding. None until a first service is logged."""
+    last = con.execute(
+        "SELECT date, odometer FROM entries WHERE car_id=? AND category='service' "
+        "ORDER BY date DESC, id DESC LIMIT 1", (car["id"],)).fetchone()
+    if not last:
+        return None
+    months = car["service_interval_months"] or 12
+    due_date = add_months(date.fromisoformat(last["date"]), months)
+    days = (due_date - date.today()).days
+    km_left = None
+    if car["service_interval_km"] and last["odometer"] is not None and current_odo is not None:
+        km_left = round(last["odometer"] + car["service_interval_km"] - current_odo)
+    binding = "time"
+    if km_left is not None:
+        ratio_time = days / (months * 30.4)
+        ratio_km = km_left / car["service_interval_km"]
+        if ratio_km < ratio_time:
+            binding = "km"
+    return {"binding": binding, "date": due_date.isoformat(), "days": days,
+            "km_left": km_left, "last_service": last["date"]}
 
 
 def car_or_404(con, car_id: int):
@@ -289,10 +323,15 @@ def edit_car(car_id: int, patch: CarPatch):
     with db() as con:
         car_or_404(con, car_id)
         sets, vals = [], []
+        # nullable fields clear when the client sends an explicit null; fields
+        # simply absent from the payload are left untouched (model_fields_set).
+        NULLABLE = {"nct_due", "nct_booked", "tax_due", "insurance_due",
+                    "service_interval_km", "service_interval_months", "year", "vin"}
         for field in ("name", "reg", "fuel_type", "make", "model", "year", "vin",
-                      "nct_due", "nct_booked", "tax_due", "insurance_due"):
+                      "nct_due", "nct_booked", "tax_due", "insurance_due",
+                      "service_interval_km", "service_interval_months"):
             v = getattr(patch, field)
-            if v is not None:
+            if v is not None or (field in NULLABLE and field in patch.model_fields_set):
                 sets.append(f"{field}=?"); vals.append(v)
         if patch.ev_enabled is not None:
             sets.append("ev_enabled=?"); vals.append(int(patch.ev_enabled))
@@ -318,13 +357,22 @@ def car_detail(car_id: int, year: int | None = None):
             "SELECT DISTINCT substr(date,1,4) y FROM entries WHERE car_id=? ORDER BY y DESC",
             (car_id,))]
         labels = {"nct_due": "NCT", "nct_booked": "NCT test", "tax_due": "Tax", "insurance_due": "Insurance"}
-        car_dues = sorted(
-            ({"item": lbl, "date": car[f], "days": (date.fromisoformat(car[f]) - date.today()).days}
-             for f, lbl in labels.items() if car[f]),
-            key=lambda i: i["days"])
+        car_dues = [
+            {"item": lbl, "date": car[f], "days": (date.fromisoformat(car[f]) - date.today()).days}
+            for f, lbl in labels.items() if car[f]]
+        cur_val = cur_odo["odometer"] if cur_odo else None
+        svc = service_due(con, car, cur_val)
+        if svc:
+            car_dues.append({"item": "Service", "date": svc["date"], "days": svc["days"]})
+        car_dues.sort(key=lambda i: i["days"])
+        service_log = [dict(r) for r in con.execute(
+            "SELECT id, date, odometer, cost, note FROM entries "
+            "WHERE car_id=? AND category='service' ORDER BY date DESC, id DESC", (car_id,))]
         return {"car": dict(car),
                 "next_due": car_dues[0] if car_dues else None,
-                "current_odo": cur_odo["odometer"] if cur_odo else None,
+                "service_due": svc,
+                "service_log": service_log,
+                "current_odo": cur_val,
                 "summary": year_summary(con, car_id, y),
                 "fuel": fuel_stats(con, car_id),
                 "entries": [dict(e) for e in entries],
@@ -427,6 +475,12 @@ def dues():
                 if v:
                     days = (date.fromisoformat(v) - today_d).days
                     items.append({"car": car["name"], "item": label, "date": v, "days": days})
+            cur = con.execute(
+                "SELECT odometer FROM entries WHERE car_id=? AND odometer IS NOT NULL "
+                "ORDER BY date DESC, id DESC LIMIT 1", (car["id"],)).fetchone()
+            svc = service_due(con, car, cur["odometer"] if cur else None)
+            if svc:
+                items.append({"car": car["name"], "item": "Service", "date": svc["date"], "days": svc["days"]})
     items.sort(key=lambda i: i["days"])
     return {"items": items, "next_days": items[0]["days"] if items else None}
 
