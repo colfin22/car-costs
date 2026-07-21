@@ -336,6 +336,11 @@ def add_entry(car_id: int, e: EntryNew):
         if e.odometer is None:
             raise HTTPException(422, "odometer reading is required for a mileage entry")
         cost = 0
+    if e.category == "fuel":
+        if cost is None:
+            raise HTTPException(422, "amount is required for a fuel entry")
+        if e.odometer is None:
+            raise HTTPException(422, "odometer reading is required for a fuel entry")
     if cost is None:
         raise HTTPException(422, "cost is required (or litres+price / kwh+price for fuel/charge)")
     with db() as con:
