@@ -548,4 +548,49 @@ def index():
 
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
 
+
+# ---- backups ---------------------------------------------------------------
+# VACUUM INTO is SQLite's own online-backup path: the snapshot is guaranteed to
+# open even if the app is writing at the time, unlike a plain copy of the live
+# file. Host-level backups should pick up data/backups/, not the live DB.
+BACKUP_DIR = os.path.join(os.path.dirname(DB_PATH), "backups")
+BACKUP_KEEP = int(os.environ.get("CARCOSTS_BACKUP_KEEP", "7"))
+
+
+def backup_db() -> dict:
+    import glob
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    dest = os.path.join(BACKUP_DIR, f"carcosts-{stamp}.db")
+    n = 1
+    while os.path.exists(dest):    # VACUUM INTO refuses to overwrite
+        dest = os.path.join(BACKUP_DIR, f"carcosts-{stamp}-{n}.db")
+        n += 1
+    with db() as con:
+        con.execute("VACUUM INTO ?", (dest,))
+    size = os.path.getsize(dest)
+    kept = sorted(glob.glob(os.path.join(BACKUP_DIR, "carcosts-*.db")))
+    pruned = 0
+    while len(kept) > BACKUP_KEEP:
+        os.remove(kept.pop(0))
+        pruned += 1
+    return {"file": os.path.basename(dest), "bytes": size,
+            "kept": len(kept), "pruned": pruned}
+
+
+@app.on_event("startup")
+async def _backup_daily():
+    import asyncio
+
+    async def loop():
+        while True:
+            try:
+                backup_db()
+            except Exception as e:
+                print(f"backup failed: {e}", flush=True)
+            await asyncio.sleep(24 * 3600)
+
+    asyncio.get_event_loop().create_task(loop())
+
+
 init_db()

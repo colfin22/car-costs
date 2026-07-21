@@ -95,6 +95,12 @@ cost per year, per km, and what's due next?*
 FastAPI + SQLite (stdlib `sqlite3`, no ORM) + one vanilla-JS page. The database
 and photos live in `data/` (gitignored). ~850 lines all-in.
 
+The app writes a daily snapshot of the database to `data/backups/` (keeps the
+last 7, `CARCOSTS_BACKUP_KEEP` to change) using SQLite's `VACUUM INTO` — a
+crash-consistent copy that is safe to restore, unlike a plain file copy of a
+live database. Point host-level backups at `data/`; if restoring, prefer the
+newest file in `data/backups/`. Photos are ordinary files and copy safely.
+
 ## Run
 
 ```bash
