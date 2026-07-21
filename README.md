@@ -27,6 +27,10 @@ Open it, tap a car, add the entry. That's the entire workflow. Everything else â
 efficiency stats, renewal reminders, NCT lifecycle, Home Assistant sensors â€”
 falls out of the data you'd capture anyway.
 
+**This is an Irish-focused app**: NCT test monitoring (due dates, bookings,
+results and retests), motor tax and insurance renewals, currency in euro and
+mileage in kilometres.
+
 ## Why
 
 Fuel apps want accounts and ads; spreadsheets die of neglect by February. This
