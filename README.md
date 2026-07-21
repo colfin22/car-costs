@@ -18,7 +18,7 @@ one-handed at the pump.*
 <p>
 <img src="docs/car-page.png" width="300" alt="Car status page — photo, due badges, renewal banner, year totals">
 &nbsp;
-<img src="docs/home.png" width="300" alt="Home screen — car cards with year total and fuel stats">
+<img src="docs/home-two-cars.png" width="300" alt="Home screen — car cards with year total and fuel stats">
 </p>
 
 </div>
