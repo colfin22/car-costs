@@ -345,6 +345,21 @@ def add_entry(car_id: int, e: EntryNew):
         raise HTTPException(422, "cost is required (or litres+price / kwh+price for fuel/charge)")
     with db() as con:
         car_or_404(con, car_id)
+        if e.odometer is not None:
+            prev = con.execute(
+                "SELECT odometer, date FROM entries WHERE car_id=? AND odometer IS NOT NULL "
+                "AND date <= ? ORDER BY date DESC, id DESC LIMIT 1", (car_id, d)).fetchone()
+            if prev and e.odometer < prev["odometer"]:
+                raise HTTPException(422,
+                    f"odometer can't go backwards: the reading on {prev['date']} was "
+                    f"{prev['odometer']:g} km")
+            nxt = con.execute(
+                "SELECT odometer, date FROM entries WHERE car_id=? AND odometer IS NOT NULL "
+                "AND date > ? ORDER BY date ASC, id ASC LIMIT 1", (car_id, d)).fetchone()
+            if nxt and e.odometer > nxt["odometer"]:
+                raise HTTPException(422,
+                    f"odometer too high for {d}: the reading on {nxt['date']} was "
+                    f"{nxt['odometer']:g} km")
         cur = con.execute(
             "INSERT INTO entries (car_id, date, category, odometer, litres, price_per_litre, "
             "kwh, price_per_kwh, cost, note) VALUES (?,?,?,?,?,?,?,?,?,?)",
