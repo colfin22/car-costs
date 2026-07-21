@@ -192,4 +192,4 @@ is the nicer phone experience.
 
 ## Licence
 
-[MIT](LICENSE)
+[MIT](LICENSE) © 2026 Colm Finn.
