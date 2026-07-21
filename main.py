@@ -54,10 +54,6 @@ def _password() -> str | None:
     return os.environ.get("CARCOSTS_PASSWORD") or None
 
 
-def _user() -> str:
-    return os.environ.get("CARCOSTS_USER", "cfinn")
-
-
 def _token() -> str:
     return hmac.new(_secret().encode(), _password().encode(), hashlib.sha256).hexdigest()
 
@@ -85,8 +81,7 @@ h1{font-size:1.1rem;margin:0 0 14px}input,button{width:100%;font:inherit;padding
 button{margin-top:12px;background:#2563eb;color:#fff;border:0;font-weight:600;cursor:pointer}
 .err{color:#b3261e;font-size:.85rem;margin-top:8px}</style></head><body>
 <form method="post" action="/login"><h1>Car Costs</h1>
-<input type="text" name="username" placeholder="Username" autocomplete="username" autofocus required>
-<input type="password" name="password" placeholder="Password" autocomplete="current-password" style="margin-top:10px" required>{err}
+<input type="password" name="password" placeholder="Password" autocomplete="current-password" autofocus required>{err}
 <button>Sign in</button></form></body></html>"""
 
 
@@ -112,8 +107,7 @@ async def login_submit(request: Request):
     from fastapi.responses import HTMLResponse, RedirectResponse
     form = await request.form()
     attempt = str(form.get("password") or "")
-    user_ok = hmac.compare_digest(str(form.get("username") or "").strip().lower(), _user())
-    if _password() and user_ok and hmac.compare_digest(attempt, _password()):
+    if _password() and hmac.compare_digest(attempt, _password()):
         resp = RedirectResponse("/", status_code=302)
         resp.set_cookie(AUTH_COOKIE, _token(), max_age=SESSION_DAYS * 86400,
                         httponly=True, secure=True, samesite="none")
