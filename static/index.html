@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Car Costs</title>
+<style>
+:root {
+  --bg: #f4f5f7; --card: #ffffff; --text: #1c1e21; --muted: #65707c;
+  --accent: #2563eb; --line: #e3e6ea; --danger: #b3261e;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #111417; --card: #1c2126; --text: #e8eaed; --muted: #9aa4af;
+          --accent: #7fb0ff; --line: #2c333a; --danger: #ffb4ab; }
+}
+* { box-sizing: border-box; margin: 0; }
+body { background: var(--bg); color: var(--text);
+  font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  max-width: 640px; margin: 0 auto; padding: 12px 12px 40px; }
+h1 { font-size: 1.25rem; padding: 8px 4px 14px; }
+h1 small { color: var(--muted); font-weight: 400; font-size: .85rem; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  padding: 14px 16px; margin-bottom: 12px; }
+.car-card { cursor: pointer; }
+.car-card:active { transform: scale(.99); }
+.car-card .nm { font-size: 1.15rem; font-weight: 600; }
+.car-card .reg { color: var(--muted); font-size: .85rem; margin-left: 8px; }
+.row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.big { font-size: 1.3rem; font-weight: 700; }
+.muted { color: var(--muted); font-size: .85rem; }
+button { font: inherit; border: 0; border-radius: 10px; padding: 12px 14px;
+  background: var(--accent); color: var(--bg); font-weight: 600; cursor: pointer; }
+button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+button.small { padding: 6px 10px; font-size: .85rem; border-radius: 8px; }
+button.danger { background: transparent; color: var(--danger); border: 0; padding: 4px; }
+.btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+.back { background: none; border: 0; color: var(--accent); font-size: 1rem; padding: 8px 4px; cursor: pointer; }
+label { display: block; font-size: .8rem; color: var(--muted); margin: 10px 0 3px; }
+input, select { width: 100%; font: inherit; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+.entry { display: flex; justify-content: space-between; gap: 8px; padding: 9px 0;
+  border-top: 1px solid var(--line); font-size: .92rem; align-items: center; }
+.entry:first-child { border-top: 0; }
+.cat { display: inline-block; min-width: 66px; color: var(--muted); }
+.total-line { display: flex; justify-content: space-between; padding: 3px 0; font-size: .95rem; }
+dialog { border: 1px solid var(--line); border-radius: 16px; background: var(--card);
+  color: var(--text); width: min(92vw, 420px); padding: 18px; }
+dialog::backdrop { background: rgba(0,0,0,.45); }
+.dlg-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+.hint { font-size: .85rem; color: var(--muted); margin-top: 8px; }
+.switch { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: .95rem; }
+.switch input { width: auto; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
