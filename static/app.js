@@ -129,18 +129,31 @@ function entryDialog(car, cat) {
       <div class="hint" id="calc"></div>`
     : cat === "odo" ? `
       <label>Odometer (km)</label><input name="odometer" type="number" step="1" inputmode="numeric" required>`
-    : `<label>Amount (€)</label><input name="cost" type="number" step="0.01" inputmode="decimal" required>
-       <label>Note</label><input name="note" placeholder="${cat === "service" ? "e.g. tyres, 2 front" : "optional"}">`;
+    : cat === "service" ? `
+      <label>Amount (€)</label><input name="cost" type="number" step="0.01" inputmode="decimal" required>
+      <label>Note</label><input name="note" placeholder="e.g. tyres, 2 front">`
+    : `<label>Amount (€) — leave blank if only setting the date</label><input name="cost" type="number" step="0.01" inputmode="decimal">
+       <label>${{ tax: "New tax expiry", nct: "New NCT due date", insurance: "New renewal date" }[cat]} (optional)</label><input name="due" type="date">
+       <label>Note</label><input name="note" placeholder="optional">`;
   const dlg = dialog(`
     <h1>${CAT_LABELS[cat]} — ${esc(car.name)}</h1>
     <label>Date</label><input name="date" type="date" value="${today()}" required>
     ${unitFields}`, async d => {
     const f = new FormData($("form", d));
-    const body = { category: cat, date: f.get("date"), note: f.get("note") || "" };
-    for (const k of ["odometer", "litres", "price_per_litre", "kwh", "price_per_kwh", "cost"])
-      if (f.get(k)) body[k] = parseFloat(f.get(k));
-    await api(`/api/cars/${car.id}/entries`, { method: "POST",
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const dueField = { tax: "tax_due", nct: "nct_due", insurance: "insurance_due" }[cat];
+    const hasCost = !!f.get("cost"), hasDue = dueField && !!f.get("due");
+    if (dueField && !hasCost && !hasDue) throw new Error("Enter an amount, a date, or both");
+    if (hasDue)
+      await api(`/api/cars/${car.id}`, { method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [dueField]: f.get("due") }) });
+    if (hasCost || !dueField) {
+      const body = { category: cat, date: f.get("date"), note: f.get("note") || "" };
+      for (const k of ["odometer", "litres", "price_per_litre", "kwh", "price_per_kwh", "cost"])
+        if (f.get(k)) body[k] = parseFloat(f.get(k));
+      await api(`/api/cars/${car.id}/entries`, { method: "POST",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    }
     showCar(car.id);
   });
   if (isFuel || isCharge) {
