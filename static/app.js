@@ -236,10 +236,12 @@ async function showCar(id, year) {
     </div>
     ${d.service_log && d.service_log.length ? `
     <div class="card"><div class="muted" style="margin-bottom:4px">Service history</div>
+      <div class="recent-scroll">
       ${d.service_log.map(s => `
         <div class="entry"><span>${dmy(s.date)}${s.odometer ? " · " + Math.round(s.odometer).toLocaleString() + " km" : ""}<br>
           <span class="muted">${esc(s.note || "—")}</span></span>
         <span>${eur(s.cost)}</span></div>`).join("")}
+      </div>
     </div>` : ""}`;
   $(".back").addEventListener("click", showList);
   $("#photo-wrap").addEventListener("click", () => $("#photo-file").click());
