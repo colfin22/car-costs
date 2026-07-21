@@ -40,6 +40,79 @@ async function showList() {
     el.addEventListener("click", () => showCar(+el.dataset.id)));
 }
 
+/* ---------- due/result banners ---------- */
+function daysTo(iso) { return Math.round((new Date(iso) - new Date(today())) / 86400000); }
+
+function bannersHtml(c) {
+  const out = [];
+  if (c.nct_booked && c.nct_booked < today())
+    out.push(`<div class="card banner" data-banner="nct-result">NCT test was ${dmy(c.nct_booked)} — result?
+      <div class="banner-actions"><button class="small" data-act="nct-pass">Passed</button>
+      <button class="small ghost" data-act="nct-fail">Failed</button></div></div>`);
+  const dues = [["nct_due", "NCT"], ["tax_due", "Tax"], ["insurance_due", "Insurance"]];
+  for (const [field, label] of dues) {
+    if (!c[field]) continue;
+    if (field === "nct_due" && c.nct_booked && c.nct_booked >= today()) continue; // test path handles it
+    const days = daysTo(c[field]);
+    if (days > 14) continue;
+    const when = days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? "today" : `in ${days}d`;
+    out.push(`<div class="card banner">${label} due ${dmy(c[field])} (${when}) — renewed?
+      <div class="banner-actions"><button class="small" data-act="renew" data-field="${field}" data-label="${label}">Renewed…</button></div></div>`);
+  }
+  return out.join("");
+}
+
+function wireBanners(car) {
+  app.querySelectorAll("[data-act]").forEach(b => b.addEventListener("click", () => {
+    const act = b.dataset.act;
+    if (act === "nct-pass") dialog(`
+      <h1>NCT passed — ${esc(car.name)}</h1>
+      <label>New NCT expiry</label><input name="due" type="date" required>`, async d => {
+      const f = new FormData($("form", d));
+      await api(`/api/cars/${car.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nct_due: f.get("due"), nct_booked: null }) });
+      showCar(car.id);
+    });
+    else if (act === "nct-fail") {
+      const dlg = dialog(`
+        <h1>NCT failed — ${esc(car.name)}</h1>
+        <label>Retest type</label><select name="rtype">
+          <option value="rebook">Retest (rebooking, fee applies)</option>
+          <option value="visual">Visual-only retest (free)</option></select>
+        <label>New test date</label><input name="due" type="date" required>
+        <div id="fee-row"><label>Rebooking fee (€)</label>
+          <input name="fee" type="number" step="0.01" inputmode="decimal"></div>`, async d => {
+        const f = new FormData($("form", d));
+        await api(`/api/cars/${car.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nct_booked: f.get("due") }) });
+        if (f.get("rtype") === "rebook" && f.get("fee"))
+          await api(`/api/cars/${car.id}/entries`, { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ category: "nct", cost: parseFloat(f.get("fee")),
+              note: "NCT retest booking — test " + dmy(f.get("due")) }) });
+        showCar(car.id);
+      });
+      $("select[name=rtype]", dlg).addEventListener("change", ev =>
+        $("#fee-row", dlg).style.display = ev.target.value === "rebook" ? "" : "none");
+    }
+    else if (act === "renew") {
+      const field = b.dataset.field, label = b.dataset.label;
+      dialog(`
+        <h1>${label} renewed — ${esc(car.name)}</h1>
+        <label>New ${label.toLowerCase()} expiry</label><input name="due" type="date" required>
+        <label>Amount paid (€) — optional</label><input name="cost" type="number" step="0.01" inputmode="decimal">`, async d => {
+        const f = new FormData($("form", d));
+        await api(`/api/cars/${car.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ [field]: f.get("due") }) });
+        if (f.get("cost"))
+          await api(`/api/cars/${car.id}/entries`, { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ category: field.replace("_due", ""), cost: parseFloat(f.get("cost")),
+              note: label + " renewal" }) });
+        showCar(car.id);
+      });
+    }
+  }));
+}
+
 /* ---------- car detail ---------- */
 async function showCar(id, year) {
   const d = await api(`/api/cars/${id}` + (year ? `?year=${year}` : ""));
@@ -64,6 +137,7 @@ async function showCar(id, year) {
       ${d.current_odo ? `<div class="muted" style="margin-top:4px">Mileage: ${Math.round(d.current_odo).toLocaleString()} km</div>` : ""}
       <div class="dues">${dueBadge("NCT", c.nct_due)}${c.nct_booked ? `<span class="due due-booked">NCT test ${dmy(c.nct_booked)} · booked</span>` : ""}${dueBadge("Tax", c.tax_due)}${dueBadge("Ins", c.insurance_due)}</div>
     </div>
+    ${bannersHtml(c)}
     <div class="card">
       <div class="row" style="margin:0 0 4px">
         <select id="year-sel" style="width:auto">${yearOpts}</select>
@@ -96,6 +170,7 @@ async function showCar(id, year) {
   $("#edit-car").addEventListener("click", () => editCarDialog(c));
   app.querySelectorAll("[data-cat]").forEach(b =>
     b.addEventListener("click", () => entryDialog(c, b.dataset.cat)));
+  wireBanners(c);
   app.querySelectorAll("[data-del]").forEach(b =>
     b.addEventListener("click", async () => {
       if (confirm("Delete this entry?")) { await api(`/api/entries/${b.dataset.del}`, { method: "DELETE" }); showCar(id); }
@@ -187,16 +262,29 @@ function editCarDialog(car) {
     <div class="switch"><input type="checkbox" name="ev_enabled" id="evt" ${car.ev_enabled ? "checked" : ""}>
       <label for="evt" style="margin:0">Electric charging entries</label></div>`, async d => {
     const f = new FormData($("form", d));
+    const newBooked = f.get("nct_booked") || null;
     await api(`/api/cars/${car.id}`, { method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: f.get("name"), reg: f.get("reg"),
         make: f.get("make") || "", model: f.get("model") || "", vin: f.get("vin") || "",
         year: f.get("year") ? +f.get("year") : null,
-        nct_due: f.get("nct_due") || null, nct_booked: f.get("nct_booked") || null,
+        nct_due: f.get("nct_due") || null, nct_booked: newBooked,
         tax_due: f.get("tax_due") || null,
         insurance_due: f.get("insurance_due") || null,
         fuel_type: f.get("fuel_type"), ev_enabled: f.get("ev_enabled") === "on" }) });
-    showCar(car.id);
+    if (newBooked && newBooked !== car.nct_booked) {
+      dialog(`
+        <h1>Log the test fee?</h1>
+        <p class="hint">The NCT fee applies on the day the test is booked (today). Cancel to skip.</p>
+        <label>Fee (€)</label><input name="fee" type="number" step="0.01" inputmode="decimal" value="60">`, async d2 => {
+        const f2 = new FormData($("form", d2));
+        if (f2.get("fee"))
+          await api(`/api/cars/${car.id}/entries`, { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ category: "nct", cost: parseFloat(f2.get("fee")),
+              note: "NCT test fee — test booked " + dmy(newBooked) }) });
+        showCar(car.id);
+      });
+    } else showCar(car.id);
   });
 }
 
