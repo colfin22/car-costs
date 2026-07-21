@@ -24,7 +24,7 @@ from PIL import Image, ImageOps
 DB_PATH = os.environ.get("CARCOSTS_DB", os.path.join(os.path.dirname(__file__), "data", "carcosts.db"))
 PHOTO_DIR = os.path.join(os.path.dirname(DB_PATH), "photos")
 
-CATEGORIES = ("fuel", "charge", "insurance", "tax", "nct", "service", "odo")
+CATEGORIES = ("fuel", "charge", "insurance", "tax", "nct", "service", "odo", "belt")
 FUEL_TYPES = ("petrol", "diesel", "hybrid", "phev", "ev")
 
 app = FastAPI(title="Car Costs")
@@ -173,7 +173,8 @@ def init_db():
                          ("photo_ver", "INTEGER NOT NULL DEFAULT 0"),
                          ("archived", "INTEGER NOT NULL DEFAULT 0"),
                          ("service_interval_km", "INTEGER"),
-                         ("service_interval_months", "INTEGER")):
+                         ("service_interval_months", "INTEGER"),
+                         ("belt_interval_km", "INTEGER")):
             if col not in have:
                 con.execute(f"ALTER TABLE cars ADD COLUMN {col} {typ}")
         if con.execute("SELECT COUNT(*) c FROM cars").fetchone()["c"] == 0:
@@ -193,6 +194,7 @@ class CarPatch(BaseModel):
     archived: bool | None = None
     service_interval_km: int | None = None
     service_interval_months: int | None = None
+    belt_interval_km: int | None = None
     nct_due: str | None = None       # YYYY-MM-DD
     nct_booked: str | None = None    # NCT appointment date, if one is booked
     tax_due: str | None = None
@@ -248,6 +250,21 @@ def service_due(con, car, current_odo):
         next_km = round(last["odometer"] + car["service_interval_km"])
     return {"binding": binding, "date": due_date.isoformat(), "days": days,
             "km_left": km_left, "next_km": next_km, "last_service": last["date"]}
+
+
+def belt_due(con, car, current_odo):
+    """Mileage-only: last belt change's odometer + the car's belt interval."""
+    if not car["belt_interval_km"]:
+        return None
+    last = con.execute(
+        "SELECT date, odometer FROM entries WHERE car_id=? AND category='belt' "
+        "AND odometer IS NOT NULL ORDER BY date DESC, id DESC LIMIT 1", (car["id"],)).fetchone()
+    if not last:
+        return None
+    next_km = round(last["odometer"] + car["belt_interval_km"])
+    return {"next_km": next_km,
+            "km_left": round(next_km - current_odo) if current_odo is not None else None,
+            "last_change": last["date"], "last_odo": round(last["odometer"])}
 
 
 def car_or_404(con, car_id: int):
@@ -329,10 +346,10 @@ def edit_car(car_id: int, patch: CarPatch):
         # nullable fields clear when the client sends an explicit null; fields
         # simply absent from the payload are left untouched (model_fields_set).
         NULLABLE = {"nct_due", "nct_booked", "tax_due", "insurance_due",
-                    "service_interval_km", "service_interval_months", "year", "vin"}
+                    "service_interval_km", "service_interval_months", "belt_interval_km", "year", "vin"}
         for field in ("name", "reg", "fuel_type", "make", "model", "year", "vin",
                       "nct_due", "nct_booked", "tax_due", "insurance_due",
-                      "service_interval_km", "service_interval_months"):
+                      "service_interval_km", "service_interval_months", "belt_interval_km"):
             v = getattr(patch, field)
             if v is not None or (field in NULLABLE and field in patch.model_fields_set):
                 sets.append(f"{field}=?"); vals.append(v)
@@ -374,6 +391,7 @@ def car_detail(car_id: int, year: int | None = None):
         return {"car": dict(car),
                 "next_due": car_dues[0] if car_dues else None,
                 "service_due": svc,
+                "belt_due": belt_due(con, car, cur_val),
                 "service_log": service_log,
                 "current_odo": cur_val,
                 "summary": year_summary(con, car_id, y),
@@ -398,6 +416,11 @@ def add_entry(car_id: int, e: EntryNew):
         if e.odometer is None:
             raise HTTPException(422, "odometer reading is required for a mileage entry")
         cost = 0
+    if e.category == "belt":
+        if cost is None:
+            raise HTTPException(422, "amount is required for a timing belt entry")
+        if e.odometer is None:
+            raise HTTPException(422, "odometer reading is required for a timing belt entry")
     if e.category == "fuel":
         if cost is None:
             raise HTTPException(422, "amount is required for a fuel entry")

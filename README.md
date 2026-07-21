@@ -60,7 +60,10 @@ cost per year, per km, and what's due next?*
   the app derives "service due" from the last service, **whichever deadline
   comes first**: badge ("Service in 800 km" / "Service 14/03/27 · 236d"),
   banner when close or overdue, and the time deadline joins the reminder feed.
-  Logging a service resets both clocks.
+  Logging a service resets both clocks. Timing belt changes get the same
+  treatment, mileage-only: log the change (date/odometer/cost), set the belt
+  interval, and the status page shows the next-due mileage with badge and
+  banner as it approaches.
 
 **Renewals that close the loop**
 - From 14 days before a due date the car's page prompts *"renewed?"* — one

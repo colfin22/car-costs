@@ -5,7 +5,7 @@ const eur = n => "€" + Number(n).toLocaleString("en-IE", { minimumFractionDigi
 const today = () => new Date().toISOString().slice(0, 10);
 const dmy = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`;
 const dm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-const CAT_LABELS = { fuel: "Fuel", charge: "Charge", insurance: "Insurance", tax: "Tax", nct: "NCT", service: "Service", odo: "Mileage" };
+const CAT_LABELS = { fuel: "Fuel", charge: "Charge", insurance: "Insurance", tax: "Tax", nct: "NCT", service: "Service", odo: "Mileage", belt: "Timing belt" };
 const photoUrl = (c, thumb) => c.photo_ver ? `/photos/${c.id}${thumb ? ".thumb" : ""}.jpg?v=${c.photo_ver}` : null;
 function svcBadge(sd) {
   if (!sd) return "";
@@ -17,6 +17,15 @@ function svcBadge(sd) {
     ? (overdue ? Math.abs(sd.km_left).toLocaleString() + " km overdue" : "in " + sd.km_left.toLocaleString() + " km")
     : dmy(sd.date) + " · " + (overdue ? Math.abs(sd.days) + "d overdue" : sd.days + "d");
   return `<span class="due ${cls}">Service ${txt}</span>`;
+}
+
+function beltBadge(bd) {
+  if (!bd || bd.km_left === null) return "";
+  const overdue = bd.km_left < 0;
+  const cls = overdue ? "due-red" : bd.km_left <= 2000 ? "due-amber" : "due-ok";
+  const txt = overdue ? Math.abs(bd.km_left).toLocaleString() + " km overdue"
+                      : "at " + bd.next_km.toLocaleString() + " km";
+  return `<span class="due ${cls}">Belt ${txt}</span>`;
 }
 
 function dueBadge(label, iso) {
@@ -79,7 +88,7 @@ if (deepLink) showCar(+deepLink[1]); else showList();
 /* ---------- due/result banners ---------- */
 function daysTo(iso) { return Math.round((new Date(iso) - new Date(today())) / 86400000); }
 
-function bannersHtml(c, sd) {
+function bannersHtml(c, sd, bd) {
   const out = [];
   if (c.nct_booked && c.nct_booked < today())
     out.push(`<div class="card banner" data-banner="nct-result">NCT test was ${dmy(c.nct_booked)} — result?
@@ -96,6 +105,11 @@ function bannersHtml(c, sd) {
       out.push(`<div class="card banner">Service due (${when}) — done?
         <div class="banner-actions"><button class="small" data-act="svc-done">Log service…</button></div></div>`);
     }
+  }
+  if (bd && bd.km_left !== null && bd.km_left <= 1000) {
+    const when = bd.km_left < 0 ? Math.abs(bd.km_left).toLocaleString() + " km overdue" : bd.km_left.toLocaleString() + " km left";
+    out.push(`<div class="card banner">Timing belt due (${when}) — changed?
+      <div class="banner-actions"><button class="small" data-act="belt-done">Log belt change…</button></div></div>`);
   }
   const dues = [["nct_due", "NCT"], ["tax_due", "Tax"], ["insurance_due", "Insurance"]];
   for (const [field, label] of dues) {
@@ -114,6 +128,7 @@ function wireBanners(car) {
   app.querySelectorAll("[data-act]").forEach(b => b.addEventListener("click", () => {
     const act = b.dataset.act;
     if (act === "svc-done") { entryDialog(car, "service"); return; }
+    if (act === "belt-done") { entryDialog(car, "belt"); return; }
     if (act === "nct-pass") dialog(`
       <h1>NCT passed — ${esc(car.name)}</h1>
       <label>New NCT expiry</label><input name="due" type="date" required>`, async d => {
@@ -169,7 +184,7 @@ async function showCar(id, year) {
   const c = d.car, s = d.summary;
   const cats = Object.entries(s.by_category).map(([k, v]) =>
     `<div class="total-line"><span class="cat">${CAT_LABELS[k] || k}</span><span>${eur(v)}</span></div>`).join("");
-  const addBtns = ["fuel", ...(c.ev_enabled ? ["charge"] : []), "odo", "insurance", "tax", "nct", "service"]
+  const addBtns = ["fuel", ...(c.ev_enabled ? ["charge"] : []), "odo", "insurance", "tax", "nct", "service", "belt"]
     .map(k => `<button data-cat="${k}">+ ${CAT_LABELS[k]}</button>`).join("");
   const yearOpts = (d.years.length ? d.years : [String(s.year)])
     .map(y => `<option ${+y === s.year ? "selected" : ""}>${y}</option>`).join("");
@@ -185,9 +200,9 @@ async function showCar(id, year) {
         <button class="small ghost" id="edit-car">Edit</button></div>
       ${detailBits ? `<div class="muted">${esc(detailBits)}${c.vin ? " · VIN " + esc(c.vin) : ""}</div>` : ""}
       ${d.current_odo ? `<div class="muted" style="margin-top:4px">Mileage: ${Math.round(d.current_odo).toLocaleString()} km${d.service_due && d.service_due.next_km ? " · next service " + d.service_due.next_km.toLocaleString() + " km or " + dmy(d.service_due.date) : d.service_due ? " · next service " + dmy(d.service_due.date) : ""}</div>` : ""}
-      <div class="dues">${svcBadge(d.service_due)}${dueBadge("NCT", c.nct_due)}${c.nct_booked ? `<span class="due due-booked">NCT test ${dmy(c.nct_booked)} · ${daysTo(c.nct_booked) >= 0 ? daysTo(c.nct_booked) + "d" : "awaiting result"}</span>` : ""}${dueBadge("Tax", c.tax_due)}${dueBadge("Ins", c.insurance_due)}</div>
+      <div class="dues">${svcBadge(d.service_due)}${beltBadge(d.belt_due)}${dueBadge("NCT", c.nct_due)}${c.nct_booked ? `<span class="due due-booked">NCT test ${dmy(c.nct_booked)} · ${daysTo(c.nct_booked) >= 0 ? daysTo(c.nct_booked) + "d" : "awaiting result"}</span>` : ""}${dueBadge("Tax", c.tax_due)}${dueBadge("Ins", c.insurance_due)}</div>
     </div>
-    ${bannersHtml(c, d.service_due)}
+    ${bannersHtml(c, d.service_due, d.belt_due)}
     <div class="card">
       <div class="row" style="margin:0 0 4px">
         <select id="year-sel" style="width:auto">${yearOpts}</select>
@@ -263,6 +278,10 @@ function entryDialog(car, cat) {
       <div class="hint" id="calc"></div>`
     : cat === "odo" ? `
       <label>Odometer (km)</label><input name="odometer" type="number" step="1" inputmode="numeric" required>`
+    : cat === "belt" ? `
+      <label>Odometer (km)</label><input name="odometer" type="number" step="1" inputmode="numeric" required>
+      <label>Amount (€)</label><input name="cost" type="number" step="0.01" inputmode="decimal" required>
+      <label>Note</label><input name="note" placeholder="e.g. belt + water pump">`
     : cat === "service" ? `
       <label>Work done</label><textarea name="note" rows="3" required placeholder="e.g. full service — oil, filters, rear pads"></textarea>
       <label>Amount (€)</label><input name="cost" type="number" step="0.01" inputmode="decimal" required>
@@ -321,6 +340,7 @@ function editCarDialog(car) {
     <label>Insurance renewal</label><input name="insurance_due" type="date" value="${car.insurance_due || ""}">
     <label>Service interval (km)</label><input name="service_interval_km" type="number" step="500" inputmode="numeric" value="${car.service_interval_km || ""}" placeholder="e.g. 15000">
     <label>Service interval (months)</label><input name="service_interval_months" type="number" inputmode="numeric" value="${car.service_interval_months || ""}" placeholder="12 (default)">
+    <label>Timing belt interval (km)</label><input name="belt_interval_km" type="number" step="1000" inputmode="numeric" value="${car.belt_interval_km || ""}" placeholder="e.g. 100000">
     <label>Fuel type</label><select name="fuel_type">
       ${["petrol", "diesel", "hybrid", "phev", "ev"].map(t =>
         `<option ${car.fuel_type === t ? "selected" : ""}>${t}</option>`).join("")}</select>
@@ -336,6 +356,7 @@ function editCarDialog(car) {
         year: f.get("year") ? +f.get("year") : null,
         nct_due: f.get("nct_due") || null, nct_booked: newBooked,
         service_interval_km: f.get("service_interval_km") ? +f.get("service_interval_km") : null,
+        belt_interval_km: f.get("belt_interval_km") ? +f.get("belt_interval_km") : null,
         service_interval_months: f.get("service_interval_months") ? +f.get("service_interval_months") : null,
         tax_due: f.get("tax_due") || null,
         insurance_due: f.get("insurance_due") || null,
