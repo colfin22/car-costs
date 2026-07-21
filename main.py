@@ -75,6 +75,10 @@ def _is_authed(request) -> bool:
 
 LOGIN_PAGE = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>Car Costs — login</title>
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="manifest" href="/static/manifest.json">
+<meta name="theme-color" content="#2563eb">
 <style>body{font:16px system-ui;background:#f4f5f7;color:#1c1e21;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
 @media (prefers-color-scheme:dark){body{background:#111417;color:#e8eaed}}
 form{background:rgba(128,128,128,.08);border:1px solid rgba(128,128,128,.25);border-radius:14px;padding:24px;width:min(88vw,320px)}
