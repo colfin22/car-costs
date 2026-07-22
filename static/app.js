@@ -5,7 +5,7 @@ const eur = n => "€" + Number(n).toLocaleString("en-IE", { minimumFractionDigi
 const today = () => new Date().toISOString().slice(0, 10);
 const dmy = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`;
 const dm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-const CAT_LABELS = { fuel: "Fuel", charge: "Charge", insurance: "Insurance", tax: "Tax", nct: "NCT", service: "Service", odo: "Mileage", belt: "Timing belt", tyres: "Tyres" };
+const CAT_LABELS = { fuel: "Fuel", charge: "Charge", insurance: "Insurance", tax: "Tax", nct: "NCT", service: "Service", odo: "Mileage", belt: "Timing belt", tyres: "Tyres", tyre_check: "Tyre check" };
 const CORNERS = ["FL", "FR", "RL", "RR"];
 const photoUrl = (c, thumb) => c.photo_ver ? `/photos/${c.id}${thumb ? ".thumb" : ""}.jpg?v=${c.photo_ver}` : null;
 function svcBadge(sd) {
@@ -94,7 +94,7 @@ if (deepLink) showCar(+deepLink[1]); else showList();
 /* ---------- due/result banners ---------- */
 function daysTo(iso) { return Math.round((new Date(iso) - new Date(today())) / 86400000); }
 
-function bannersHtml(c, sd, bd, td) {
+function bannersHtml(c, sd, bd) {
   const out = [];
   if (c.nct_booked && c.nct_booked < today())
     out.push(`<div class="card banner" data-banner="nct-result">NCT test was ${dmy(c.nct_booked)} — result?
@@ -123,17 +123,6 @@ function bannersHtml(c, sd, bd, td) {
         <div class="banner-actions"><button class="small" data-act="belt-done">Log belt change…</button></div></div>`);
     }
   }
-  if (td) {
-    const kmSide = td.binding === "km";
-    const left = kmSide ? td.km_left : td.days;
-    if (left !== null && left !== undefined && (kmSide ? left <= 1000 : left <= 30)) {
-      const when = kmSide
-        ? (left < 0 ? Math.abs(left).toLocaleString() + " km overdue" : left.toLocaleString() + " km left")
-        : (left < 0 ? Math.abs(left) + "d overdue" : "due " + dmy(td.date));
-      out.push(`<div class="card banner">Tyres due — ${td.corner} (${when}) — changed?
-        <div class="banner-actions"><button class="small" data-act="tyres-done">Log tyres…</button></div></div>`);
-    }
-  }
   const dues = [["nct_due", "NCT"], ["tax_due", "Tax"], ["insurance_due", "Insurance"]];
   for (const [field, label] of dues) {
     if (!c[field]) continue;
@@ -152,7 +141,6 @@ function wireBanners(car) {
     const act = b.dataset.act;
     if (act === "svc-done") { entryDialog(car, "service"); return; }
     if (act === "belt-done") { entryDialog(car, "belt"); return; }
-    if (act === "tyres-done") { entryDialog(car, "tyres"); return; }
     if (act === "nct-pass") dialog(`
       <h1>NCT passed — ${esc(car.name)}</h1>
       <label>New NCT expiry</label><input name="due" type="date" required>`, async d => {
@@ -208,8 +196,10 @@ async function showCar(id, year) {
   const c = d.car, s = d.summary;
   const cats = Object.entries(s.by_category).map(([k, v]) =>
     `<div class="total-line"><span class="cat">${CAT_LABELS[k] || k}</span><span>${eur(v)}</span></div>`).join("");
-  const addBtns = ["fuel", ...(c.ev_enabled ? ["charge"] : []), "odo", "insurance", "tax", "nct", "service", "tyres"]
+  const addBtns = ["fuel", ...(c.ev_enabled ? ["charge"] : []), "service", "tyres"]
     .map(k => `<button data-cat="${k}">+ ${CAT_LABELS[k]}</button>`).join("");
+  const smallBtns = ["odo", "insurance", "tax", "nct"]
+    .map(k => `<button class="small ghost" data-cat="${k}">+ ${CAT_LABELS[k]}</button>`).join("");
   const yearOpts = (d.years.length ? d.years : [String(s.year)])
     .map(y => `<option ${+y === s.year ? "selected" : ""}>${y}</option>`).join("");
   const detailBits = [c.year, c.make, c.model].filter(Boolean).join(" ");
@@ -224,9 +214,9 @@ async function showCar(id, year) {
         <button class="small ghost" id="edit-car">Edit</button></div>
       ${detailBits ? `<div class="muted">${esc(detailBits)}${c.vin ? " · VIN " + esc(c.vin) : ""}</div>` : ""}
       ${d.current_odo ? `<div class="muted" style="margin-top:4px">Mileage: ${Math.round(d.current_odo).toLocaleString()} km${d.service_due && d.service_due.next_km ? " · next service " + d.service_due.next_km.toLocaleString() + " km or " + dmy(d.service_due.date) : d.service_due ? " · next service " + dmy(d.service_due.date) : ""}</div>` : ""}
-      <div class="dues">${svcBadge(d.service_due)}${quietBadge(d.belt_due, "Belt")}${quietBadge(d.tyre_due, "Tyres")}${dueBadge("NCT", c.nct_due)}${c.nct_booked ? `<span class="due due-booked">NCT test ${dmy(c.nct_booked)} · ${daysTo(c.nct_booked) >= 0 ? daysTo(c.nct_booked) + "d" : "awaiting result"}</span>` : ""}${dueBadge("Tax", c.tax_due)}${dueBadge("Ins", c.insurance_due)}</div>
+      <div class="dues">${svcBadge(d.service_due)}${quietBadge(d.belt_due, "Belt")}${dueBadge("NCT", c.nct_due)}${c.nct_booked ? `<span class="due due-booked">NCT test ${dmy(c.nct_booked)} · ${daysTo(c.nct_booked) >= 0 ? daysTo(c.nct_booked) + "d" : "awaiting result"}</span>` : ""}${dueBadge("Tax", c.tax_due)}${dueBadge("Ins", c.insurance_due)}</div>
     </div>
-    ${bannersHtml(c, d.service_due, d.belt_due, d.tyre_due)}
+    ${bannersHtml(c, d.service_due, d.belt_due)}
     <div class="card">
       <div class="row" style="margin:0 0 4px">
         <select id="year-sel" style="width:auto">${yearOpts}</select>
@@ -237,6 +227,7 @@ async function showCar(id, year) {
         <span>${s.cost_per_km ? (100 * s.cost_per_km).toFixed(1) + " c/km" : ""}</span></div>
     </div>
     <div class="btn-grid">${addBtns}</div>
+    <div class="row" style="justify-content:center;gap:8px;flex-wrap:wrap;margin:8px 0">${smallBtns}</div>
     <div class="card"><div class="muted" style="margin-bottom:4px">Recent</div>
       <div class="recent-scroll">
       ${d.entries.map(e => `
@@ -251,10 +242,18 @@ async function showCar(id, year) {
     <div class="card"><div class="muted" style="margin-bottom:4px">Tyres</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
       ${CORNERS.filter(k => d.tyres[k]).map(k => {
-        const t = d.tyres[k];
+        const t = d.tyres[k], chk = (d.tyre_checks || {})[k];
         const km = t.odometer != null && d.current_odo != null ? Math.round(d.current_odo - t.odometer) : null;
+        let chkLine = "";
+        if (chk) {
+          const mm = chk.mm != null
+            ? (chk.mm < 1.6 ? `<span class="due due-red">${chk.mm} mm</span>`
+              : chk.mm <= 3 ? `<span class="due due-amber">${chk.mm} mm</span>` : chk.mm + " mm")
+            : "";
+          chkLine = `<br><span class="muted">checked ${dmy(chk.date)}</span> ${mm}`;
+        }
         return `<div><b>${k}</b> <span class="muted">${dmy(t.date)}${km !== null ? " · " + km.toLocaleString() + " km" : ""}</span><br>
-          <span class="muted">${esc([t.brand, t.size].filter(Boolean).join(" · ") || "—")}</span></div>`;
+          <span class="muted">${esc([t.brand, t.size].filter(Boolean).join(" · ") || "—")}</span>${chkLine}</div>`;
       }).join("")}
       </div>
     </div>` : ""}
@@ -285,7 +284,8 @@ async function showCar(id, year) {
   $("#year-sel").addEventListener("change", ev => showCar(id, ev.target.value));
   $("#edit-car").addEventListener("click", () => editCarDialog(c));
   app.querySelectorAll("[data-cat]").forEach(b =>
-    b.addEventListener("click", () => entryDialog(c, b.dataset.cat)));
+    b.addEventListener("click", () =>
+      b.dataset.cat === "tyres" ? tyreChooser(c) : entryDialog(c, b.dataset.cat)));
   wireBanners(c);
   app.querySelectorAll("[data-del]").forEach(b =>
     b.addEventListener("click", async () => {
@@ -308,6 +308,27 @@ function dialog(html, onSubmit) {
   return dlg;
 }
 
+function tyreChooser(car) {
+  const dlg = document.createElement("dialog");
+  dlg.innerHTML = `<form method="dialog"><h1>Tyres — ${esc(car.name)}</h1>
+    <div class="dlg-actions" style="flex-direction:column;align-items:stretch;gap:8px">
+    <button value="fit">New tyres fitted…</button>
+    <button value="check">Tyre check…</button>
+    <button class="ghost" value="cancel" formnovalidate>Cancel</button></div></form>`;
+  document.body.append(dlg);
+  dlg.addEventListener("close", () => {
+    if (dlg.returnValue === "fit") entryDialog(car, "tyres");
+    if (dlg.returnValue === "check") entryDialog(car, "tyre_check");
+    dlg.remove();
+  });
+  dlg.showModal();
+}
+
+function picked_mm(f, corners) {
+  return corners.map(k => f.get("mm_" + k) ? `${k}=${parseFloat(f.get("mm_" + k))}` : "")
+    .filter(Boolean).join(",");
+}
+
 function entryDialog(car, cat) {
   const isFuel = cat === "fuel", isCharge = cat === "charge";
   const unitFields = isFuel ? `
@@ -326,6 +347,13 @@ function entryDialog(car, cat) {
       <label>Odometer (km)</label><input name="odometer" type="number" step="1" inputmode="numeric" required>
       <label>Amount (€)</label><input name="cost" type="number" step="0.01" inputmode="decimal" required>
       <label>Note</label><input name="note" placeholder="e.g. belt + water pump">`
+    : cat === "tyre_check" ? `
+      <p class="hint" style="margin:0">Tick the corners you checked; tread depth optional.</p>
+      ${CORNERS.map(k => `<div class="row" style="justify-content:flex-start;gap:10px;margin-top:6px">
+        <label style="display:inline-flex;align-items:center;gap:4px;margin:0;min-width:52px"><input type="checkbox" name="corner" value="${k}" checked>${k}</label>
+        <input name="mm_${k}" type="number" step="0.1" inputmode="decimal" placeholder="mm" style="width:80px">
+      </div>`).join("")}
+      <label>Note</label><input name="note" placeholder="e.g. all okay">`
     : cat === "tyres" ? `
       <label>Corners</label>
       <div class="row" style="justify-content:flex-start;gap:14px">
@@ -359,13 +387,17 @@ function entryDialog(car, cat) {
       const body = { category: cat, date: f.get("date"), note: f.get("note") || "" };
       for (const k of ["odometer", "litres", "price_per_litre", "kwh", "price_per_kwh", "cost"])
         if (f.get(k)) body[k] = parseFloat(f.get(k));
-      if (cat === "tyres") {
+      if (cat === "tyres" || cat === "tyre_check") {
         const picked = f.getAll("corner");
         if (!picked.length) throw new Error("Pick at least one corner");
         body.corners = picked.join(",");
+      }
+      if (cat === "tyres") {
         body.tyre_size = f.get("tyre_size") || "";
         body.tyre_brand = f.get("tyre_brand") || "";
       }
+      if (cat === "tyre_check")
+        body.tread_mm = picked_mm(f, f.getAll("corner"));
       await api(`/api/cars/${car.id}/entries`, { method: "POST",
         headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     }
@@ -403,8 +435,6 @@ function editCarDialog(car) {
     <label>Service interval (months)</label><input name="service_interval_months" type="number" inputmode="numeric" value="${car.service_interval_months || ""}" placeholder="12 (default)">
     <label>Timing belt interval (km)</label><input name="belt_interval_km" type="number" step="1000" inputmode="numeric" value="${car.belt_interval_km || ""}" placeholder="e.g. 100000">
     <label>Timing belt interval (years)</label><input name="belt_interval_years" type="number" inputmode="numeric" value="${car.belt_interval_years || ""}" placeholder="e.g. 8">
-    <label>Tyre interval (km)</label><input name="tyre_interval_km" type="number" step="1000" inputmode="numeric" value="${car.tyre_interval_km || ""}" placeholder="optional, e.g. 40000">
-    <label>Tyre interval (years)</label><input name="tyre_interval_years" type="number" inputmode="numeric" value="${car.tyre_interval_years || ""}" placeholder="optional, e.g. 6">
     <button type="button" class="small ghost" id="log-belt" style="margin-top:8px">Log a timing belt change…</button>
     <label>Fuel type</label><select name="fuel_type">
       ${["petrol", "diesel", "hybrid", "phev", "ev"].map(t =>
@@ -423,8 +453,6 @@ function editCarDialog(car) {
         service_interval_km: f.get("service_interval_km") ? +f.get("service_interval_km") : null,
         belt_interval_km: f.get("belt_interval_km") ? +f.get("belt_interval_km") : null,
         belt_interval_years: f.get("belt_interval_years") ? +f.get("belt_interval_years") : null,
-        tyre_interval_km: f.get("tyre_interval_km") ? +f.get("tyre_interval_km") : null,
-        tyre_interval_years: f.get("tyre_interval_years") ? +f.get("tyre_interval_years") : null,
         service_interval_months: f.get("service_interval_months") ? +f.get("service_interval_months") : null,
         tax_due: f.get("tax_due") || null,
         insurance_due: f.get("insurance_due") || null,
