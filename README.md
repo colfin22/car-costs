@@ -16,7 +16,7 @@ one-handed at the pump.*
 <a href="https://buymeacoffee.com/colfin22"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee"></a>
 
 <p>
-<img src="docs/car-page-2.png" width="300" alt="Car status page — photo, due badges, renewal banner, year totals, and the per-corner tyre grid">
+<img src="docs/car-hero.png" width="300" alt="Car status page — photo, due badges, renewal banner, entry buttons and year totals">
 &nbsp;
 <img src="docs/home-two-cars-2.png" width="300" alt="Home screen — car cards with year total and fuel stats">
 </p>
@@ -83,6 +83,10 @@ cost per year, per km, and what's due next?*
   entry recording which corners you looked at and, optionally, tread depth in
   mm per corner. The grid shows each corner's last check, flagging depths at
   3 mm and below and highlighting anything under the 1.6 mm legal minimum.
+
+<p align="center">
+<img src="docs/tyre-grid.png" width="360" alt="Per-corner tyre grid — brand, size, km since fitting and last tread check, with depths at or below 3 mm flagged amber">
+</p>
 
 **Renewals that close the loop**
 - From 14 days before a due date the car's page prompts *"renewed?"* — one
