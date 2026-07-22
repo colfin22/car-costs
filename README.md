@@ -73,6 +73,13 @@ cost per year, per km, and what's due next?*
   from car settings, and nothing appears on the status page until the binding
   deadline is within 2,000 km / 60 days (badge) or 1,000 km / 30 days
   (banner). The years deadline joins the reminder feed like any other date.
+- **Tyres** are a first-class lifecycle item: a tyre entry records which
+  corners were changed (FL/FR/RL/RR), the size and brand (both prefilled from
+  last time), cost and odometer — a front pair and a rear pair fitted the same
+  day are just two entries. The car page derives a per-corner grid (what's
+  fitted, when, and km since), and optional per-car km/years intervals give
+  each corner its own quiet belt-style due clock — the badge follows whichever
+  corner is nearest its deadline.
 
 **Renewals that close the loop**
 - From 14 days before a due date the car's page prompts *"renewed?"* — one

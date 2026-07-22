@@ -24,7 +24,8 @@ from PIL import Image, ImageOps
 DB_PATH = os.environ.get("CARCOSTS_DB", os.path.join(os.path.dirname(__file__), "data", "carcosts.db"))
 PHOTO_DIR = os.path.join(os.path.dirname(DB_PATH), "photos")
 
-CATEGORIES = ("fuel", "charge", "insurance", "tax", "nct", "service", "odo", "belt")
+CATEGORIES = ("fuel", "charge", "insurance", "tax", "nct", "service", "odo", "belt", "tyres")
+TYRE_CORNERS = ("FL", "FR", "RL", "RR")
 FUEL_TYPES = ("petrol", "diesel", "hybrid", "phev", "ev")
 
 app = FastAPI(title="Car Costs")
@@ -175,9 +176,15 @@ def init_db():
                          ("service_interval_km", "INTEGER"),
                          ("service_interval_months", "INTEGER"),
                          ("belt_interval_km", "INTEGER"),
-                         ("belt_interval_years", "INTEGER")):
+                         ("belt_interval_years", "INTEGER"),
+                         ("tyre_interval_km", "INTEGER"),
+                         ("tyre_interval_years", "INTEGER")):
             if col not in have:
                 con.execute(f"ALTER TABLE cars ADD COLUMN {col} {typ}")
+        have_e = {r["name"] for r in con.execute("PRAGMA table_info(entries)")}
+        for col in ("corners", "tyre_size", "tyre_brand"):
+            if col not in have_e:
+                con.execute(f"ALTER TABLE entries ADD COLUMN {col} TEXT DEFAULT ''")
         if con.execute("SELECT COUNT(*) c FROM cars").fetchone()["c"] == 0:
             con.execute("INSERT INTO cars (name) VALUES ('My Car')")
 
@@ -196,6 +203,8 @@ class CarPatch(BaseModel):
     service_interval_months: int | None = None
     belt_interval_km: int | None = None
     belt_interval_years: int | None = None
+    tyre_interval_km: int | None = None
+    tyre_interval_years: int | None = None
     nct_due: str | None = None       # YYYY-MM-DD
     nct_booked: str | None = None    # NCT appointment date, if one is booked
     tax_due: str | None = None
@@ -218,6 +227,9 @@ class EntryNew(BaseModel):
     price_per_kwh: float | None = None
     cost: float | None = None    # derived for fuel/charge when omitted
     note: str = ""
+    corners: str = ""            # tyres: CSV of FL/FR/RL/RR
+    tyre_size: str = ""          # tyres: e.g. 205/55 R16
+    tyre_brand: str = ""         # tyres: e.g. Michelin CrossClimate 2
 
 
 def add_months(d: date, months: int) -> date:
@@ -279,6 +291,55 @@ def belt_due(con, car, current_odo):
     return {"binding": binding, "next_km": next_km, "km_left": km_left,
             "date": due_date.isoformat() if due_date else None, "days": days,
             "last_change": last["date"], "last_odo": round(last["odometer"])}
+
+
+def tyres_current(con, car_id: int):
+    """Latest tyre fitted per corner — each corner's record comes from the most
+    recent tyres entry whose corner list covers it."""
+    rows = con.execute(
+        "SELECT date, odometer, corners, tyre_size, tyre_brand FROM entries "
+        "WHERE car_id=? AND category='tyres' ORDER BY date DESC, id DESC", (car_id,)).fetchall()
+    out = {}
+    for r in rows:
+        for corner in (r["corners"] or "").split(","):
+            if corner in TYRE_CORNERS and corner not in out:
+                out[corner] = {"date": r["date"], "odometer": r["odometer"],
+                               "size": r["tyre_size"] or "", "brand": r["tyre_brand"] or ""}
+    return out
+
+
+def tyre_due(con, car, current_odo):
+    """Per-corner clocks like the belt's dual deadline: each corner ages from its
+    own last change; the badge/banner follows the corner nearest its deadline."""
+    if not car["tyre_interval_km"] and not car["tyre_interval_years"]:
+        return None
+    fitted = tyres_current(con, car["id"])
+    if not fitted:
+        return None
+    worst = None
+    for corner, f in fitted.items():
+        next_km = km_left = due_date = days = None
+        if car["tyre_interval_km"] and f["odometer"] is not None:
+            next_km = round(f["odometer"] + car["tyre_interval_km"])
+            if current_odo is not None:
+                km_left = round(next_km - current_odo)
+        if car["tyre_interval_years"]:
+            due_date = add_months(date.fromisoformat(f["date"]), car["tyre_interval_years"] * 12)
+            days = (due_date - date.today()).days
+        if days is None and km_left is None:
+            continue
+        ratio_time = days / (car["tyre_interval_years"] * 365.25) if days is not None else None
+        ratio_km = km_left / car["tyre_interval_km"] if km_left is not None else None
+        ratio = min(r for r in (ratio_time, ratio_km) if r is not None)
+        binding = "km" if ratio_km is not None and (ratio_time is None or ratio_km < ratio_time) else "time"
+        cand = {"binding": binding, "next_km": next_km, "km_left": km_left,
+                "date": due_date.isoformat() if due_date else None, "days": days,
+                "last_change": f["date"], "corner": corner, "_ratio": ratio}
+        if worst is None or ratio < worst["_ratio"]:
+            worst = cand
+    if worst:
+        worst.pop("_ratio")
+    return worst
 
 
 def car_or_404(con, car_id: int):
@@ -361,11 +422,13 @@ def edit_car(car_id: int, patch: CarPatch):
         # simply absent from the payload are left untouched (model_fields_set).
         NULLABLE = {"nct_due", "nct_booked", "tax_due", "insurance_due",
                     "service_interval_km", "service_interval_months",
-                    "belt_interval_km", "belt_interval_years", "year", "vin"}
+                    "belt_interval_km", "belt_interval_years",
+                    "tyre_interval_km", "tyre_interval_years", "year", "vin"}
         for field in ("name", "reg", "fuel_type", "make", "model", "year", "vin",
                       "nct_due", "nct_booked", "tax_due", "insurance_due",
                       "service_interval_km", "service_interval_months",
-                      "belt_interval_km", "belt_interval_years"):
+                      "belt_interval_km", "belt_interval_years",
+                      "tyre_interval_km", "tyre_interval_years"):
             v = getattr(patch, field)
             if v is not None or (field in NULLABLE and field in patch.model_fields_set):
                 sets.append(f"{field}=?"); vals.append(v)
@@ -403,14 +466,20 @@ def car_detail(car_id: int, year: int | None = None):
         bd = belt_due(con, car, cur_val)
         if bd and bd["date"]:
             car_dues.append({"item": "Timing belt", "date": bd["date"], "days": bd["days"]})
+        td = tyre_due(con, car, cur_val)
+        if td and td["date"]:
+            car_dues.append({"item": "Tyres", "date": td["date"], "days": td["days"]})
         car_dues.sort(key=lambda i: i["days"])
         service_log = [dict(r) for r in con.execute(
-            "SELECT id, date, odometer, cost, note FROM entries "
-            "WHERE car_id=? AND category='service' ORDER BY date DESC, id DESC", (car_id,))]
+            "SELECT id, date, category, odometer, cost, note, corners, tyre_size, tyre_brand "
+            "FROM entries WHERE car_id=? AND category IN ('service','tyres') "
+            "ORDER BY date DESC, id DESC", (car_id,))]
         return {"car": dict(car),
                 "next_due": car_dues[0] if car_dues else None,
                 "service_due": svc,
                 "belt_due": bd,
+                "tyre_due": td,
+                "tyres": tyres_current(con, car_id),
                 "service_log": service_log,
                 "current_odo": cur_val,
                 "summary": year_summary(con, car_id, y),
@@ -440,6 +509,15 @@ def add_entry(car_id: int, e: EntryNew):
             raise HTTPException(422, "amount is required for a timing belt entry")
         if e.odometer is None:
             raise HTTPException(422, "odometer reading is required for a timing belt entry")
+    if e.category == "tyres":
+        picked = [c for c in e.corners.split(",") if c]
+        if not picked or any(c not in TYRE_CORNERS for c in picked):
+            raise HTTPException(422, f"corners must name at least one of {TYRE_CORNERS}")
+        e.corners = ",".join(c for c in TYRE_CORNERS if c in picked)
+        if cost is None:
+            raise HTTPException(422, "amount is required for a tyre entry")
+        if e.odometer is None:
+            raise HTTPException(422, "odometer reading is required for a tyre entry")
     if e.category == "fuel":
         if cost is None:
             raise HTTPException(422, "amount is required for a fuel entry")
@@ -466,9 +544,10 @@ def add_entry(car_id: int, e: EntryNew):
                     f"{nxt['odometer']:g} km")
         cur = con.execute(
             "INSERT INTO entries (car_id, date, category, odometer, litres, price_per_litre, "
-            "kwh, price_per_kwh, cost, note) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "kwh, price_per_kwh, cost, note, corners, tyre_size, tyre_brand) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (car_id, d, e.category, e.odometer, e.litres, e.price_per_litre,
-             e.kwh, e.price_per_kwh, cost, e.note))
+             e.kwh, e.price_per_kwh, cost, e.note, e.corners, e.tyre_size, e.tyre_brand))
         return dict(con.execute("SELECT * FROM entries WHERE id=?", (cur.lastrowid,)).fetchone())
 
 
@@ -529,6 +608,9 @@ def dues():
             bd = belt_due(con, car, cur["odometer"] if cur else None)
             if bd and bd["date"]:
                 items.append({"car": car["name"], "item": "Timing belt", "date": bd["date"], "days": bd["days"]})
+            td = tyre_due(con, car, cur["odometer"] if cur else None)
+            if td and td["date"]:
+                items.append({"car": car["name"], "item": "Tyres", "date": td["date"], "days": td["days"]})
     items.sort(key=lambda i: i["days"])
     return {"items": items, "next_days": items[0]["days"] if items else None}
 
