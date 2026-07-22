@@ -18,7 +18,7 @@ one-handed at the pump.*
 <p>
 <img src="docs/car-hero.png" width="300" alt="Car status page — photo, due badges, renewal banner, entry buttons and year totals">
 &nbsp;
-<img src="docs/home-two-cars-2.png" width="300" alt="Home screen — car cards with year total and fuel stats">
+<img src="docs/recent-tyres-home.png" width="300" alt="Recent entries and the per-corner tyre grid, above the home screen listing each car's year total and fuel stats">
 </p>
 
 </div>
