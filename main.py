@@ -376,6 +376,32 @@ def fuel_stats(con, car_id: int):
     }
 
 
+DUE_LABELS = {"nct_due": "NCT", "nct_booked": "NCT test",
+              "tax_due": "Tax", "insurance_due": "Insurance"}
+
+
+def current_odo_of(con, car_id: int):
+    r = con.execute(
+        "SELECT odometer FROM entries WHERE car_id=? AND odometer IS NOT NULL "
+        "ORDER BY date DESC, id DESC LIMIT 1", (car_id,)).fetchone()
+    return r["odometer"] if r else None
+
+
+def car_due_items(con, car, current_odo):
+    """The car's upcoming date-based dues (renewals + service/belt), soonest first."""
+    today_d = date.today()
+    items = [{"item": lbl, "date": car[f], "days": (date.fromisoformat(car[f]) - today_d).days}
+             for f, lbl in DUE_LABELS.items() if car[f]]
+    svc = service_due(con, car, current_odo)
+    if svc:
+        items.append({"item": "Service", "date": svc["date"], "days": svc["days"]})
+    bd = belt_due(con, car, current_odo)
+    if bd and bd["date"]:
+        items.append({"item": "Timing belt", "date": bd["date"], "days": bd["days"]})
+    items.sort(key=lambda i: i["days"])
+    return items
+
+
 @app.get("/api/cars")
 def list_cars(include_archived: bool = False):
     year = date.today().year
@@ -586,27 +612,40 @@ def photo(name: str):
 @app.get("/api/dues")
 def dues():
     """Upcoming renewals in a dict shape suited to a Home Assistant REST sensor."""
-    labels = {"nct_due": "NCT", "nct_booked": "NCT test", "tax_due": "Tax", "insurance_due": "Insurance"}
     items = []
-    today_d = date.today()
     with db() as con:
         for car in con.execute("SELECT * FROM cars WHERE archived = 0 ORDER BY id"):
-            for field, label in labels.items():
-                v = car[field]
-                if v:
-                    days = (date.fromisoformat(v) - today_d).days
-                    items.append({"car": car["name"], "item": label, "date": v, "days": days})
-            cur = con.execute(
-                "SELECT odometer FROM entries WHERE car_id=? AND odometer IS NOT NULL "
-                "ORDER BY date DESC, id DESC LIMIT 1", (car["id"],)).fetchone()
-            svc = service_due(con, car, cur["odometer"] if cur else None)
-            if svc:
-                items.append({"car": car["name"], "item": "Service", "date": svc["date"], "days": svc["days"]})
-            bd = belt_due(con, car, cur["odometer"] if cur else None)
-            if bd and bd["date"]:
-                items.append({"car": car["name"], "item": "Timing belt", "date": bd["date"], "days": bd["days"]})
+            for it in car_due_items(con, car, current_odo_of(con, car["id"])):
+                items.append({"car": car["name"], **it})
     items.sort(key=lambda i: i["days"])
     return {"items": items, "next_days": items[0]["days"] if items else None}
+
+
+@app.get("/api/summary")
+def summary(year: int | None = None, include_archived: bool = False):
+    """One payload covering every car — lets Home Assistant poll once and derive
+    many template sensors, instead of a REST resource per car (issue #17)."""
+    y = year or date.today().year
+    where = "" if include_archived else "WHERE archived = 0"
+    cars_out, all_dues = [], []
+    with db() as con:
+        for car in con.execute(f"SELECT * FROM cars {where} ORDER BY id"):
+            cur = current_odo_of(con, car["id"])
+            s = year_summary(con, car["id"], y)
+            f = fuel_stats(con, car["id"])
+            due_items = car_due_items(con, car, cur)
+            cars_out.append({
+                "id": car["id"], "name": car["name"], "reg": car["reg"],
+                "total": s["total"], "by_category": s["by_category"],
+                "km_driven": s["km_driven"], "cost_per_km": s["cost_per_km"],
+                "l_per_100km": f["l_per_100km"], "last_price_per_litre": f["last_price_per_litre"],
+                "current_odo": cur, "next_due": due_items[0] if due_items else None,
+            })
+            for it in due_items:
+                all_dues.append({"car": car["name"], **it})
+    all_dues.sort(key=lambda i: i["days"])
+    return {"year": y, "cars": cars_out, "dues": all_dues,
+            "next_days": all_dues[0]["days"] if all_dues else None}
 
 
 @app.get("/healthz")

@@ -193,7 +193,9 @@ is the nicer phone experience.
 `ev_enabled`, `archived`; an explicit `null` clears a nullable field) ·
 `GET /api/cars/{id}?year=` (includes `next_due`, `service_due`, `belt_due`,
 `service_log`) · `POST /api/cars/{id}/entries` · `DELETE /api/entries/{id}` ·
-`POST /api/cars/{id}/photo` · `GET /api/dues` · `GET /healthz`
+`POST /api/cars/{id}/photo` · `GET /api/dues` ·
+`GET /api/summary[?year=&include_archived=]` (all cars + dues in one payload,
+for driving several Home Assistant sensors from a single poll) · `GET /healthz`
 
 ## Licence
 
