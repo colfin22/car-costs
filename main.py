@@ -636,6 +636,7 @@ def summary(year: int | None = None, include_archived: bool = False):
             due_items = car_due_items(con, car, cur)
             cars_out.append({
                 "id": car["id"], "name": car["name"], "reg": car["reg"],
+                "ev_enabled": car["ev_enabled"],
                 "total": s["total"], "by_category": s["by_category"],
                 "km_driven": s["km_driven"], "cost_per_km": s["cost_per_km"],
                 "l_per_100km": f["l_per_100km"], "last_price_per_litre": f["last_price_per_litre"],

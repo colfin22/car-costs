@@ -149,7 +149,7 @@ non-private peer address**. Requests from private-range addresses with no
 proxy header are trusted without credentials.
 
 - **Trusted, no login**: a Home Assistant REST sensor polling
-  `http://10.x.x.x:8000/api/dues` on your LAN; an uptime monitor hitting
+  `http://10.x.x.x:8000/api/summary` on your LAN; an uptime monitor hitting
   `/healthz` directly.
 - **Gated**: any browser arriving via your public hostname through the tunnel
   — pages redirect to `/login`, API calls get 401.
@@ -168,19 +168,19 @@ A ready-to-use package lives at
 [examples/car_costs.yaml](examples/car_costs.yaml) — drop it into your
 `packages/` folder, set the app host and your notify service, and you get:
 
-- **Renewal reminders** — a REST sensor on `/api/dues` (every upcoming
-  NCT/test/tax/insurance date with a day count) plus one automation for 30-day
-  and 7-day phone nudges, with all wording and routing kept in Home Assistant.
-- **Per-car stats** — each car's `/api/cars/<id>` response feeds one REST
-  resource exposing year cost (category breakdown as attributes), mileage,
-  L/100km, cost/km and days-to-next-due; duplicate the block per car.
+**One HTTP poll feeds everything.** A single REST sensor fetches `/api/summary`
+(all cars plus upcoming dues in one payload), and template sensors derive the
+per-car figures from it — year cost (category breakdown as an attribute),
+mileage, L/100km, cost/km and days-to-next-due — plus one automation for
+30-day and 7-day phone nudges, wording and routing kept in Home Assistant.
+Adding a car is a copy-paste of the "Car N" template group; there's no extra
+HTTP resource and no id to repoint in a URL.
 
 Two tips from a real deployment, already baked into the example: use
-`availability:` templates for the not-yet-populated cases (a numeric-unit REST
-sensor that renders a placeholder string fails to register at all), and gate a
-charge-cost sensor on `{{ value_json.car.ev_enabled == 1 }}` so it activates
-itself when a car goes electric. The resources reference car ids — a
-replacement car means repointing one resource.
+`availability:` templates for the not-yet-populated cases (efficiency and
+cost/km sit unavailable until enough data accrues), and gate the charge-cost
+sensor on the car's `ev_enabled` so it activates itself when a car goes
+electric.
 
 For a dashboard tab, a full-page `iframe` card pointing at the app works
 (https required if your Home Assistant is https) — though the home-screen PWA

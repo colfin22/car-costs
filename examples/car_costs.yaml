@@ -4,75 +4,127 @@
 #   homeassistant:
 #     packages: !include_dir_named packages
 # in configuration.yaml), replace <app-host> and the notify service, then run a
-# config check and reload REST entities + automations (no restart needed).
+# config check and reload REST/template entities + automations (no restart needed).
+#
+# ONE HTTP poll feeds everything: a single REST sensor fetches /api/summary
+# (all cars + upcoming dues in one payload), and the template sensors below
+# derive the per-car figures from it. Adding a car is a copy-paste of the
+# "Car N" template group — no extra HTTP resource, no id-repointing in a URL.
 #
 # Notes:
 # - Automations defined in a package show "cannot be edited from the UI" in HA.
 #   That's normal for YAML packages — edit this file and reload instead.
-# - Numeric REST sensors must not template to 'unknown' — a non-numeric state
-#   fails entity setup entirely. That's what the availability: templates are
-#   for; efficiency/cost-per-km sit unavailable until enough data accrues.
 # - unique_ids key on the car id (car1, car2, …), so renaming a car in the app
 #   never orphans the HA entities.
 # - The charge-cost sensor is EV-ready: its availability tracks the app's
-#   per-car electric toggle, so it comes alive by itself when a car goes
-#   electric. No edit needed.
+#   per-car electric toggle (ev_enabled in the payload), so it comes alive by
+#   itself when a car goes electric. No edit needed.
 
 rest:
-  # Upcoming NCT/test/tax/insurance dates across all cars, for the reminders.
-  - resource: http://<app-host>:8000/api/dues
+  # Single poll for all cars + dues. State = days to the soonest due across all
+  # cars; the full payload rides along as attributes for the sensors below.
+  - resource: http://<app-host>:8000/api/summary
     scan_interval: 3600
     sensor:
-      - name: Car costs next due
-        unique_id: car_costs_next_due
+      - name: Car costs summary
+        unique_id: car_costs_summary
         value_template: "{{ value_json.next_days }}"
         unit_of_measurement: d
         json_attributes:
-          - items
+          - cars
+          - dues
+          - year
 
-  # Per-car stats. Duplicate this whole block per car and set the car id in the
-  # resource URL, the sensor names and the unique_ids (car1 → car2, …).
-  - resource: http://<app-host>:8000/api/cars/1
-    scan_interval: 3600
-    sensor:
+template:
+  - sensor:
+      # ===== Car 1 =====================================================
+      # Duplicate this whole group per car: change the id in each
+      # selectattr('id','eq', N), the names, and the unique_ids (car1 → car2).
       - name: Family car year cost
         unique_id: car_costs_car1_year_total
-        value_template: "{{ value_json.summary.total }}"
         unit_of_measurement: "€"
-        json_attributes_path: $.summary
-        json_attributes:
-          - by_category
-          - year
-          - km_driven
+        availability: >-
+          {{ (state_attr('sensor.car_costs_summary','cars') or [])
+             | selectattr('id','eq',1) | list | count > 0 }}
+        state: >-
+          {% set c = (state_attr('sensor.car_costs_summary','cars') or [])
+             | selectattr('id','eq',1) | first %}
+          {{ c.total }}
+        attributes:
+          by_category: >-
+            {% set c = (state_attr('sensor.car_costs_summary','cars') or [])
+               | selectattr('id','eq',1) | first | default(none) %}
+            {{ c.by_category if c else {} }}
+
       - name: Family car mileage
         unique_id: car_costs_car1_mileage
-        value_template: "{{ value_json.current_odo | round(0) }}"
         unit_of_measurement: km
-        availability: "{{ value_json.current_odo is not none }}"
+        availability: >-
+          {% set c = (state_attr('sensor.car_costs_summary','cars') or [])
+             | selectattr('id','eq',1) | first | default(none) %}
+          {{ c is not none and c.current_odo is not none }}
+        state: >-
+          {% set c = (state_attr('sensor.car_costs_summary','cars') or [])
+             | selectattr('id','eq',1) | first %}
+          {{ c.current_odo | round(0) }}
+
       - name: Family car fuel efficiency
         unique_id: car_costs_car1_l100km
-        value_template: "{{ value_json.fuel.l_per_100km }}"
         unit_of_measurement: L/100km
-        availability: "{{ value_json.fuel.l_per_100km is not none }}"
+        availability: >-
+          {% set c = (state_attr('sensor.car_costs_summary','cars') or [])
+             | selectattr('id','eq',1) | first | default(none) %}
+          {{ c is not none and c.l_per_100km is not none }}
+        state: >-
+          {% set c = (state_attr('sensor.car_costs_summary','cars') or [])
+             | selectattr('id','eq',1) | first %}
+          {{ c.l_per_100km }}
+
       - name: Family car cost per km
         unique_id: car_costs_car1_cost_per_km
-        value_template: "{{ (value_json.summary.cost_per_km * 100) | round(1) }}"
-        unit_of_measurement: c/km
-        availability: "{{ value_json.summary.cost_per_km is not none }}"
+        unit_of_measurement: "€/km"
+        availability: >-
+          {% set c = (state_attr('sensor.car_costs_summary','cars') or [])
+             | selectattr('id','eq',1) | first | default(none) %}
+          {{ c is not none and c.cost_per_km is not none }}
+        state: >-
+          {% set c = (state_attr('sensor.car_costs_summary','cars') or [])
+             | selectattr('id','eq',1) | first %}
+          {{ c.cost_per_km | round(2) }}
+
       - name: Family car next due
         unique_id: car_costs_car1_next_due
-        value_template: "{{ value_json.next_due.days }}"
         unit_of_measurement: d
-        json_attributes_path: $.next_due
-        json_attributes:
-          - item
-          - date
-        availability: "{{ value_json.next_due is not none }}"
+        availability: >-
+          {% set c = (state_attr('sensor.car_costs_summary','cars') or [])
+             | selectattr('id','eq',1) | first | default(none) %}
+          {{ c is not none and c.next_due is not none }}
+        state: >-
+          {% set c = (state_attr('sensor.car_costs_summary','cars') or [])
+             | selectattr('id','eq',1) | first %}
+          {{ c.next_due.days }}
+        attributes:
+          item: >-
+            {% set c = (state_attr('sensor.car_costs_summary','cars') or [])
+               | selectattr('id','eq',1) | first | default(none) %}
+            {{ c.next_due.item if c and c.next_due else none }}
+          date: >-
+            {% set c = (state_attr('sensor.car_costs_summary','cars') or [])
+               | selectattr('id','eq',1) | first | default(none) %}
+            {{ c.next_due.date if c and c.next_due else none }}
+
       - name: Family car charge cost
         unique_id: car_costs_car1_charge_total
-        value_template: "{{ value_json.summary.by_category.charge | default(0) }}"
         unit_of_measurement: "€"
-        availability: "{{ value_json.car.ev_enabled == 1 }}"
+        availability: >-
+          {% set c = (state_attr('sensor.car_costs_summary','cars') or [])
+             | selectattr('id','eq',1) | first | default(none) %}
+          {{ c is not none and c.ev_enabled == 1 }}
+        state: >-
+          {% set c = (state_attr('sensor.car_costs_summary','cars') or [])
+             | selectattr('id','eq',1) | first %}
+          {{ c.by_category.charge | default(0) }}
+      # ===== end Car 1 =================================================
 
 automation:
   - id: car_costs_due_reminders
@@ -83,7 +135,7 @@ automation:
     actions:
       - repeat:
           for_each: >-
-            {{ state_attr('sensor.car_costs_next_due', 'items')
+            {{ state_attr('sensor.car_costs_summary', 'dues')
                | selectattr('days', 'in', [30, 7]) | list }}
           sequence:
             - variables:
