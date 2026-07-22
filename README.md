@@ -141,6 +141,9 @@ release:
 docker run -d -p 8000:8000 -v carcosts-data:/srv/data ghcr.io/colfin22/car-costs:latest
 ```
 
+The same images are also on Docker Hub as
+[`colfin22/car-costs`](https://hub.docker.com/r/colfin22/car-costs).
+
 Or use the included [docker-compose.yml](docker-compose.yml)
 (`docker compose up -d`), which also shows the environment variables. The
 database, photos and daily backups all live under `/srv/data` — one volume
