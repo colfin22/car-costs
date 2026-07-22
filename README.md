@@ -23,13 +23,16 @@ one-handed at the pump.*
 
 </div>
 
-Open it, tap a car, add the entry. That's the entire workflow. Everything else —
-efficiency stats, renewal reminders, NCT lifecycle, Home Assistant sensors —
-falls out of the data you'd capture anyway.
+Open it, tap a car, add the entry. That's the entire workflow.
 
-**This is an Irish-focused app**: NCT test monitoring (due dates, bookings,
-results and retests), motor tax and insurance renewals, currency in euro and
-mileage in kilometres.
+- **Log in seconds** — a fill is amount + odometer at the pump; tax, insurance,
+  NCT and servicing are dated amounts, freely backdatable.
+- **See what it really costs** — year total by category, cost per km, L/100km,
+  per car.
+- **Never miss a date** — badges and banners from 14 days out, plus phone
+  reminders through Home Assistant.
+
+**Irish-focused**: NCT, motor tax, euro, kilometres.
 
 ## Why
 
