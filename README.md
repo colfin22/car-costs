@@ -16,7 +16,7 @@ one-handed at the pump.*
 <a href="https://buymeacoffee.com/colfin22"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee"></a>
 
 <p>
-<img src="docs/car-hero.png" width="300" alt="Car status page — photo, due badges, renewal banner, entry buttons and year totals">
+<img src="docs/car-hero-2.png" width="300" alt="Car status page — photo, due badges, renewal banner, entry buttons and year totals">
 &nbsp;
 <img src="docs/recent-tyres-home.png" width="300" alt="Recent entries and the per-corner tyre grid, above the home screen listing each car's year total and fuel stats">
 </p>
