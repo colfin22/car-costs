@@ -54,9 +54,10 @@ cost per year, per km, and what's due next?*
   between its neighbours in date order).
 
 **A status page per car**
-- Tap-to-upload photo (resized server-side, doubles as the home-screen
-  thumbnail), make/model/year/VIN, and badges for NCT due, a booked NCT test
-  (with countdown), tax and insurance — amber inside 30 days, red overdue.
+- Tap-to-upload photo (resized server-side, shown in a consistent 4:3 frame
+  and doubling as the home-screen thumbnail), make/model/year/VIN, and badges
+  for NCT due, a booked NCT test (with countdown), tax and insurance — amber
+  inside 30 days, red overdue.
 - Stats as data accrues: year total by category, cost per km, L/100km from
   consecutive fills, current mileage.
 
@@ -109,7 +110,7 @@ cost per year, per km, and what's due next?*
 ## Stack
 
 FastAPI + SQLite (stdlib `sqlite3`, no ORM) + one vanilla-JS page. The database
-and photos live in `data/` (gitignored). ~850 lines all-in.
+and photos live in `data/` (gitignored). ~1,200 lines all-in.
 
 The app writes a daily snapshot of the database to `data/backups/` (keeps the
 last 7, `CARCOSTS_BACKUP_KEEP` to change) using SQLite's `VACUUM INTO` — a
