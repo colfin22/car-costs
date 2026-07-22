@@ -59,7 +59,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 .thumb.ph { display: inline-flex; align-items: center; justify-content: center;
   background: var(--bg); font-size: 1.5rem; }
 .photo-wrap { cursor: pointer; }
-.photo-wrap img { width: 100%; height: auto; border-radius: 10px; display: block; }
+.photo-wrap img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; display: block; }
 .ph-big { text-align: center; padding: 26px 0; color: var(--muted); background: var(--bg);
   border-radius: 10px; font-size: 2rem; }
 .ph-big small { font-size: .85rem; }
