@@ -168,19 +168,18 @@ A ready-to-use package lives at
 [examples/car_costs.yaml](examples/car_costs.yaml) — drop it into your
 `packages/` folder, set the app host and your notify service, and you get:
 
-**One HTTP poll feeds everything.** A single REST sensor fetches `/api/summary`
-(all cars plus upcoming dues in one payload), and template sensors derive the
-per-car figures from it — year cost (category breakdown as an attribute),
-mileage, L/100km, cost/km and days-to-next-due — plus one automation for
-30-day and 7-day phone nudges, wording and routing kept in Home Assistant.
-Adding a car is a copy-paste of the "Car N" template group; there's no extra
-HTTP resource and no id to repoint in a URL.
+**One poll, all cars — including future ones.** A single REST sensor fetches
+`/api/summary` and holds every car (and all upcoming dues) in its attributes.
+The reminders automation reads that combined dues list, so it covers every car
+with **no per-car configuration** — add a car in the app and the 30-day/7-day
+nudges just include it. This is the whole setup for reminders and for reading
+any car's stats via `state_attr('sensor.car_costs_summary', 'cars')`.
 
-Two tips from a real deployment, already baked into the example: use
-`availability:` templates for the not-yet-populated cases (efficiency and
-cost/km sit unavailable until enough data accrues), and gate the charge-cost
-sensor on the car's `ev_enabled` so it activates itself when a car goes
-electric.
+The example also includes an **optional** section that turns each car into its
+own sensor entity (for history graphs or per-car automations). Home Assistant
+can't generate entities from a list, so that part needs one small block per
+car — copy the "Car N" group and change the id. It's not needed just to read
+the data; the summary sensor already exposes all of it.
 
 For a dashboard tab, a full-page `iframe` card pointing at the app works
 (https required if your Home Assistant is https) — though the home-screen PWA

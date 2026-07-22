@@ -1,4 +1,4 @@
-# Car Costs — Home Assistant package: renewal reminders + per-car stats sensors.
+# Car Costs — Home Assistant package: renewal reminders + per-car stats.
 #
 # Drop this file into your HA config's packages/ folder (needs
 #   homeassistant:
@@ -6,23 +6,21 @@
 # in configuration.yaml), replace <app-host> and the notify service, then run a
 # config check and reload REST/template entities + automations (no restart needed).
 #
-# ONE HTTP poll feeds everything: a single REST sensor fetches /api/summary
-# (all cars + upcoming dues in one payload), and the template sensors below
-# derive the per-car figures from it. Adding a car is a copy-paste of the
-# "Car N" template group — no extra HTTP resource, no id-repointing in a URL.
+# ONE HTTP poll, ALL cars. The single REST sensor below fetches /api/summary —
+# every car plus all upcoming dues in one payload — and holds them in its
+# attributes:
+#   state_attr('sensor.car_costs_summary', 'cars')   # list of every car + stats
+#   state_attr('sensor.car_costs_summary', 'dues')   # combined upcoming dues
+# The reminders automation reads the 'dues' attribute, so it covers every car
+# automatically — add a car in the app and nothing here needs changing.
 #
-# Notes:
-# - Automations defined in a package show "cannot be edited from the UI" in HA.
-#   That's normal for YAML packages — edit this file and reload instead.
-# - unique_ids key on the car id (car1, car2, …), so renaming a car in the app
-#   never orphans the HA entities.
-# - The charge-cost sensor is EV-ready: its availability tracks the app's
-#   per-car electric toggle (ev_enabled in the payload), so it comes alive by
-#   itself when a car goes electric. No edit needed.
+# You only need the OPTIONAL section at the bottom if you want each car as its
+# own sensor entity (for history graphs or per-car automations). HA's YAML
+# can't loop entities out of a list, so that part needs one small block per car.
 
 rest:
-  # Single poll for all cars + dues. State = days to the soonest due across all
-  # cars; the full payload rides along as attributes for the sensors below.
+  # The one poll everything derives from. State = days to the soonest due
+  # across all cars; the full payload rides along as attributes.
   - resource: http://<app-host>:8000/api/summary
     scan_interval: 3600
     sensor:
@@ -35,11 +33,41 @@ rest:
           - dues
           - year
 
+automation:
+  # Covers every car with no per-car config — reads the combined dues list.
+  - id: car_costs_due_reminders
+    alias: Car costs - renewal reminders (30d/7d)
+    triggers:
+      - trigger: time
+        at: "09:00:00"
+    actions:
+      - repeat:
+          for_each: >-
+            {{ state_attr('sensor.car_costs_summary', 'dues')
+               | selectattr('days', 'in', [30, 7]) | list }}
+          sequence:
+            - variables:
+                msg: >-
+                  {{ repeat.item.car }}: {{ repeat.item.item }} due
+                  {{ repeat.item.date }} ({{ repeat.item.days }} days)
+            # Add one action per phone that should get the nudge.
+            - action: notify.mobile_app_your_phone
+              data:
+                title: Car reminder
+                message: "{{ msg }}"
+
+# ===================================================================
+# OPTIONAL — one sensor entity per car.
+#
+# Everything above already exposes every car via the summary sensor's
+# attributes; you only need this if you want per-car *entities* (history
+# graphs, per-car automations). HA can't generate entities from a list, so
+# copy the "Car N" group per car and change the id in each selectattr(...),
+# the names, and the unique_ids (car1 → car2 → …).
+# ===================================================================
 template:
   - sensor:
-      # ===== Car 1 =====================================================
-      # Duplicate this whole group per car: change the id in each
-      # selectattr('id','eq', N), the names, and the unique_ids (car1 → car2).
+      # ----- Car 1 -----
       - name: Family car year cost
         unique_id: car_costs_car1_year_total
         unit_of_measurement: "€"
@@ -124,26 +152,4 @@ template:
           {% set c = (state_attr('sensor.car_costs_summary','cars') or [])
              | selectattr('id','eq',1) | first %}
           {{ c.by_category.charge | default(0) }}
-      # ===== end Car 1 =================================================
-
-automation:
-  - id: car_costs_due_reminders
-    alias: Car costs - renewal reminders (30d/7d)
-    triggers:
-      - trigger: time
-        at: "09:00:00"
-    actions:
-      - repeat:
-          for_each: >-
-            {{ state_attr('sensor.car_costs_summary', 'dues')
-               | selectattr('days', 'in', [30, 7]) | list }}
-          sequence:
-            - variables:
-                msg: >-
-                  {{ repeat.item.car }}: {{ repeat.item.item }} due
-                  {{ repeat.item.date }} ({{ repeat.item.days }} days)
-            # Add one action per phone that should get the nudge.
-            - action: notify.mobile_app_your_phone
-              data:
-                title: Car reminder
-                message: "{{ msg }}"
+      # ----- end Car 1 -----
