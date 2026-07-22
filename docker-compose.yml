@@ -1,0 +1,19 @@
+services:
+  carcosts:
+    image: ghcr.io/colfin22/car-costs:latest
+    # Or build from a checkout instead:
+    # build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - carcosts-data:/srv/data
+    environment:
+      TZ: Europe/Dublin
+      # Uncomment to require a login for proxied/non-private requests
+      # (see "Security model" in the README):
+      # CARCOSTS_PASSWORD: change-me
+      # CARCOSTS_BACKUP_KEEP: "7"
+    restart: unless-stopped
+
+volumes:
+  carcosts-data:

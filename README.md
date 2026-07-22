@@ -132,6 +132,20 @@ One placeholder car is seeded on first run — rename it via **Edit**, and add
 more with **+ Add car**.
 Configuration is via environment variables — see [.env.example](.env.example).
 
+### Docker
+
+Pre-built multi-arch images (amd64 + arm64) are published to GHCR on each
+release:
+
+```bash
+docker run -d -p 8000:8000 -v carcosts-data:/srv/data ghcr.io/colfin22/car-costs:latest
+```
+
+Or use the included [docker-compose.yml](docker-compose.yml)
+(`docker compose up -d`), which also shows the environment variables. The
+database, photos and daily backups all live under `/srv/data` — one volume
+covers everything.
+
 ### Install it as a phone app (PWA)
 
 There's no app store — there doesn't need to be. The page is an installable
