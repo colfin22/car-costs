@@ -84,10 +84,6 @@ cost per year, per km, and what's due next?*
   mm per corner. The grid shows each corner's last check, flagging depths at
   3 mm and below and highlighting anything under the 1.6 mm legal minimum.
 
-<p align="center">
-<img src="docs/tyre-grid.png" width="360" alt="Per-corner tyre grid — brand, size, km since fitting and last tread check, with depths at or below 3 mm flagged amber">
-</p>
-
 **Renewals that close the loop**
 - From 14 days before a due date the car's page prompts *"renewed?"* — one
   dialog captures the new date and (optionally) what you paid. Renew early via
