@@ -12,6 +12,7 @@ one-handed at the pump.*
 ![PWA](https://img.shields.io/badge/PWA-installable-5A0FC8)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-integrated-41BDF5?logo=homeassistant&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
+[![Docker Pulls](https://img.shields.io/docker/pulls/colfin22/car-costs?logo=docker&logoColor=white)](https://hub.docker.com/r/colfin22/car-costs)
 
 <a href="https://buymeacoffee.com/colfin22"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee"></a>
 
