@@ -24,7 +24,7 @@ from PIL import Image, ImageOps
 DB_PATH = os.environ.get("CARCOSTS_DB", os.path.join(os.path.dirname(__file__), "data", "carcosts.db"))
 PHOTO_DIR = os.path.join(os.path.dirname(DB_PATH), "photos")
 
-CATEGORIES = ("fuel", "charge", "insurance", "tax", "nct", "service", "odo", "belt", "tyres", "tyre_check")
+CATEGORIES = ("fuel", "charge", "insurance", "tax", "nct", "service", "odo", "belt", "tyres", "tyre_check", "check")
 TYRE_CORNERS = ("FL", "FR", "RL", "RR")
 FUEL_TYPES = ("petrol", "diesel", "hybrid", "phev", "ev")
 
@@ -339,7 +339,7 @@ def year_summary(con, car_id: int, year: int):
         "SELECT category, SUM(cost) total FROM entries "
         "WHERE car_id=? AND date LIKE ? GROUP BY category",
         (car_id, f"{year}-%")).fetchall()
-    by_cat = {r["category"]: round(r["total"], 2) for r in rows if r["category"] not in ("odo", "tyre_check")}
+    by_cat = {r["category"]: round(r["total"], 2) for r in rows if r["category"] not in ("odo", "tyre_check", "check")}
     odo = con.execute(
         "SELECT MIN(odometer) lo, MAX(odometer) hi FROM entries "
         "WHERE car_id=? AND date LIKE ? AND odometer IS NOT NULL",
@@ -511,6 +511,10 @@ def add_entry(car_id: int, e: EntryNew):
             except ValueError:
                 raise HTTPException(422, f"tread depth for {k} must be a number (mm)")
         e.tread_mm = ",".join(f"{k}={pairs[k]:g}" for k in TYRE_CORNERS if k in pairs)
+    if e.category == "check":
+        cost = 0
+        if not (e.note or "").strip():
+            raise HTTPException(422, "a note is required for a check (what did you check?)")
     if e.category == "fuel":
         if cost is None:
             raise HTTPException(422, "amount is required for a fuel entry")

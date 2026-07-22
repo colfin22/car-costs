@@ -5,7 +5,7 @@ const eur = n => "€" + Number(n).toLocaleString("en-IE", { minimumFractionDigi
 const today = () => new Date().toISOString().slice(0, 10);
 const dmy = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`;
 const dm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-const CAT_LABELS = { fuel: "Fuel", charge: "Charge", insurance: "Insurance", tax: "Tax", nct: "NCT", service: "Service", odo: "Mileage", belt: "Timing belt", tyres: "Tyres", tyre_check: "Tyre check" };
+const CAT_LABELS = { fuel: "Fuel", charge: "Charge", insurance: "Insurance", tax: "Tax", nct: "NCT", service: "Service", odo: "Mileage", belt: "Timing belt", tyres: "Tyres", tyre_check: "Tyre check", check: "Check" };
 const CORNERS = ["FL", "FR", "RL", "RR"];
 const photoUrl = (c, thumb) => c.photo_ver ? `/photos/${c.id}${thumb ? ".thumb" : ""}.jpg?v=${c.photo_ver}` : null;
 function svcBadge(sd) {
@@ -285,7 +285,9 @@ async function showCar(id, year) {
   $("#edit-car").addEventListener("click", () => editCarDialog(c));
   app.querySelectorAll("[data-cat]").forEach(b =>
     b.addEventListener("click", () =>
-      b.dataset.cat === "tyres" ? tyreChooser(c) : entryDialog(c, b.dataset.cat)));
+      b.dataset.cat === "tyres" ? tyreChooser(c)
+        : b.dataset.cat === "service" ? serviceChooser(c)
+        : entryDialog(c, b.dataset.cat)));
   wireBanners(c);
   app.querySelectorAll("[data-del]").forEach(b =>
     b.addEventListener("click", async () => {
@@ -306,6 +308,22 @@ function dialog(html, onSubmit) {
   });
   dlg.showModal();
   return dlg;
+}
+
+function serviceChooser(car) {
+  const dlg = document.createElement("dialog");
+  dlg.innerHTML = `<form method="dialog"><h1>Service — ${esc(car.name)}</h1>
+    <div class="dlg-actions" style="flex-direction:column;align-items:stretch;gap:8px">
+    <button value="service">Full service…</button>
+    <button value="check">Quick check…</button>
+    <button class="ghost" value="cancel" formnovalidate>Cancel</button></div></form>`;
+  document.body.append(dlg);
+  dlg.addEventListener("close", () => {
+    if (dlg.returnValue === "service") entryDialog(car, "service");
+    if (dlg.returnValue === "check") entryDialog(car, "check");
+    dlg.remove();
+  });
+  dlg.showModal();
 }
 
 function tyreChooser(car) {
@@ -368,6 +386,9 @@ function entryDialog(car, cat) {
       <label>Work done</label><textarea name="note" rows="3" required placeholder="e.g. full service — oil, filters, rear pads"></textarea>
       <label>Amount (€)</label><input name="cost" type="number" step="0.01" inputmode="decimal" required>
       <label>Odometer (km) — optional, anchors the service interval</label><input name="odometer" type="number" step="1" inputmode="numeric">`
+    : cat === "check" ? `
+      <label>What did you check?</label><textarea name="note" rows="3" required placeholder="e.g. checked coolant & oil, topped up washer fluid, tyre pressures"></textarea>
+      <label>Odometer (km) — optional</label><input name="odometer" type="number" step="1" inputmode="numeric">`
     : `<label>Amount (€) — leave blank if only setting the date</label><input name="cost" type="number" step="0.01" inputmode="decimal">
        <label>${{ tax: "New tax expiry", nct: "New NCT due date", insurance: "New renewal date" }[cat]} (optional)</label><input name="due" type="date">
        <label>Note</label><input name="note" placeholder="optional">`;

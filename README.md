@@ -63,7 +63,9 @@ cost per year, per km, and what's due next?*
 
 **Service log & interval**
 - Every service records what was actually carried out — a per-car service
-  history (date, odometer, work done, cost) on the status page.
+  history (date, odometer, work done, cost) on the status page. The Service
+  button offers a **quick check** too: a zero-cost note for things you checked
+  rather than paid for (coolant, oil, tyre pressures).
 - Set a per-car service interval — km and/or months (12-month default) — and
   the app derives "service due" from the last service, **whichever deadline
   comes first**: badge ("Service in 800 km" / "Service 14/03/27 · 236d"),
