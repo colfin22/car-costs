@@ -216,9 +216,9 @@ async function showCar(id, year) {
       ${d.current_odo ? `<div class="muted" style="margin-top:4px">Mileage: ${Math.round(d.current_odo).toLocaleString()} km${d.service_due && d.service_due.next_km ? " · next service " + d.service_due.next_km.toLocaleString() + " km or " + dmy(d.service_due.date) : d.service_due ? " · next service " + dmy(d.service_due.date) : ""}</div>` : ""}
       <div class="dues">${svcBadge(d.service_due)}${quietBadge(d.belt_due, "Belt")}${dueBadge("NCT", c.nct_due)}${c.nct_booked ? `<span class="due due-booked">NCT test ${dmy(c.nct_booked)} · ${daysTo(c.nct_booked) >= 0 ? daysTo(c.nct_booked) + "d" : "awaiting result"}</span>` : ""}${dueBadge("Tax", c.tax_due)}${dueBadge("Ins", c.insurance_due)}</div>
     </div>
+    ${bannersHtml(c, d.service_due, d.belt_due)}
     <div class="btn-grid">${addBtns}</div>
     <div class="row" style="justify-content:center;gap:8px;flex-wrap:wrap;margin:8px 0">${smallBtns}</div>
-    ${bannersHtml(c, d.service_due, d.belt_due)}
     <div class="card">
       <div class="row" style="margin:0 0 4px">
         <select id="year-sel" style="width:auto">${yearOpts}</select>
