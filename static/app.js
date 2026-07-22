@@ -226,7 +226,7 @@ async function showCar(id, year) {
       ${cats || '<div class="muted">No entries yet — add the first below.</div>'}
       <div class="row muted" style="margin-top:6px">
         <span>${s.km_driven ? s.km_driven.toLocaleString() + " km logged" : ""}</span>
-        <span>${s.cost_per_km ? (100 * s.cost_per_km).toFixed(1) + " c/km" : ""}</span></div>
+        <span>${s.cost_per_km ? eur(s.cost_per_km) + "/km" : ""}</span></div>
     </div>
     <div class="card"><div class="muted" style="margin-bottom:4px">Recent</div>
       <div class="recent-scroll">
