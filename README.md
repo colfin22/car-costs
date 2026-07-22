@@ -129,15 +129,26 @@ Screen**). It installs with its own icon and opens fullscreen like a native
 app. For install and use away from home the instance needs to be reachable
 over HTTPS — see the next section.
 
-### Exposing it to the internet (optional)
+### Security model (when exposed to the internet)
 
-Set `CARCOSTS_PASSWORD` in the environment and any request arriving through a
-reverse proxy or tunnel (detected via the `Cf-Connecting-Ip` header, or any
-non-private peer address) must log in: a 30-day HMAC session cookie
-(`SameSite=None; Secure`, so it survives being iframed in a dashboard), while
-direct internal callers — monitoring, Home Assistant sensors — stay exempt.
-Rotating the password invalidates every session. Publish the hostname only
-after the password is set.
+With `CARCOSTS_PASSWORD` set, a request must log in when it **arrives through
+the tunnel/proxy** (a `Cf-Connecting-Ip` header is present) **or comes from a
+non-private peer address**. Requests from private-range addresses with no
+proxy header are trusted without credentials.
+
+- **Trusted, no login**: a Home Assistant REST sensor polling
+  `http://10.x.x.x:8000/api/dues` on your LAN; an uptime monitor hitting
+  `/healthz` directly.
+- **Gated**: any browser arriving via your public hostname through the tunnel
+  — pages redirect to `/login`, API calls get 401.
+
+This assumes the tunnel is the *only* internet route to the app — if you
+port-forward directly instead, the non-private-peer check still gates it, but
+don't run both patterns at once without thinking it through. Sessions are
+30-day HMAC cookies (`SameSite=None; Secure`, so the app survives being
+iframed in a dashboard); rotating the password invalidates every session.
+`/login` and `/healthz` are always public. Publish the hostname only after
+the password is set.
 
 ## Home Assistant
 
