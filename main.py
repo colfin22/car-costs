@@ -785,7 +785,10 @@ def healthz():
 
 @app.get("/")
 def index():
-    return FileResponse(os.path.join(os.path.dirname(__file__), "static", "index.html"))
+    # no-cache = always revalidate the HTML shell, so ?v= bumps in it are seen
+    # immediately; the static assets it names stay normally cacheable.
+    return FileResponse(os.path.join(os.path.dirname(__file__), "static", "index.html"),
+                        headers={"Cache-Control": "no-cache"})
 
 
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
