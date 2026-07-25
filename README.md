@@ -53,6 +53,10 @@ cost per year, per km, and what's due next?*
 - Odometer readings are validated against the timeline — no backwards or
   impossible values, with backdating fully supported (a reading must simply fit
   between its neighbours in date order).
+- Document attachments: hang receipts, invoices, certs and test reports (PDF or
+  photos, 10 MB each) on any entry via the 📎 on its row, or in the car's
+  Documents section for paperwork with no cost attached — on a phone the file
+  picker offers the camera, so "scanning" a receipt is just photographing it.
 
 **A status page per car**
 - Tap-to-upload photo (resized server-side, shown in a consistent 4:3 frame
@@ -119,7 +123,8 @@ The app writes a daily snapshot of the database to `data/backups/` (keeps the
 last 7, `CARCOSTS_BACKUP_KEEP` to change) using SQLite's `VACUUM INTO` — a
 crash-consistent copy that is safe to restore, unlike a plain file copy of a
 live database. Point host-level backups at `data/`; if restoring, prefer the
-newest file in `data/backups/`. Photos are ordinary files and copy safely.
+newest file in `data/backups/`. Photos and document attachments (`data/photos/`,
+`data/docs/`) are ordinary files and copy safely.
 
 ## Run
 

@@ -234,7 +234,7 @@ async function showCar(id, year) {
         <div class="entry"><span>${dmy(e.date)} <span class="cat">${CAT_LABELS[e.category]}</span>
           ${e.litres ? e.litres + "L @" + (e.price_per_litre || 0).toFixed(3) : ""}
           ${e.kwh ? e.kwh + "kWh" : ""} ${esc(e.note || "")}</span>
-        <span>${e.category === "odo" ? Math.round(e.odometer).toLocaleString() + " km" : eur(e.cost)} <button class="danger" data-del="${e.id}">✕</button></span></div>`).join("") ||
+        <span>${e.category === "odo" ? Math.round(e.odometer).toLocaleString() + " km" : eur(e.cost)} <button class="ghost clip${e.attachments.length ? "" : " clip-empty"}" data-att="${e.id}" title="Attachments">📎${e.attachments.length || ""}</button><button class="danger" data-del="${e.id}">✕</button></span></div>`).join("") ||
         '<div class="muted">Nothing yet.</div>'}
       </div>
     </div>
@@ -265,7 +265,15 @@ async function showCar(id, year) {
           <span class="muted">${esc(s.category === "tyres" ? [s.tyre_brand, s.tyre_size, s.note].filter(Boolean).join(" · ") || "—" : s.note || "—")}</span></span>
         <span>${eur(s.cost)}</span></div>`).join("")}
       </div>
-    </div>` : ""}`;
+    </div>` : ""}
+    <div class="card"><div class="muted" style="margin-bottom:4px">Documents</div>
+      ${(d.attachments || []).map(a => `
+        <div class="entry"><span class="doc-open" data-open="${a.id}">${esc(a.filename)} <span class="muted">${dmy(a.created)}</span></span>
+        <button class="danger" data-adel="${a.id}">✕</button></div>`).join("") ||
+        '<div class="muted">No documents yet — certs, receipts and reports live here.</div>'}
+      <button class="ghost" id="add-doc" style="width:100%;margin-top:8px">+ Add document…</button>
+      <input type="file" id="doc-file" accept="image/*,application/pdf" hidden>
+    </div>`;
   c._tyrePrefill = (() => {
     const latest = CORNERS.map(k => (d.tyres || {})[k]).filter(Boolean)
       .sort((a, b) => b.date.localeCompare(a.date))[0];
@@ -291,8 +299,64 @@ async function showCar(id, year) {
   wireBanners(c);
   app.querySelectorAll("[data-del]").forEach(b =>
     b.addEventListener("click", async () => {
-      if (confirm("Delete this entry?")) { await api(`/api/entries/${b.dataset.del}`, { method: "DELETE" }); showCar(id); }
+      if (confirm("Delete this entry?" + (d.entries.find(e => e.id === +b.dataset.del)?.attachments.length ? " Its attachments go too." : ""))) { await api(`/api/entries/${b.dataset.del}`, { method: "DELETE" }); showCar(id); }
     }));
+  app.querySelectorAll("[data-att]").forEach(b =>
+    b.addEventListener("click", () => {
+      const e = d.entries.find(en => en.id === +b.dataset.att);
+      attachmentsDialog(c, e);
+    }));
+  app.querySelectorAll("[data-open]").forEach(el =>
+    el.addEventListener("click", () => window.open(`/api/attachments/${el.dataset.open}`)));
+  app.querySelectorAll("[data-adel]").forEach(b =>
+    b.addEventListener("click", async () => {
+      if (confirm("Delete this document?")) { await api(`/api/attachments/${b.dataset.adel}`, { method: "DELETE" }); showCar(id); }
+    }));
+  $("#add-doc").addEventListener("click", () => $("#doc-file").click());
+  $("#doc-file").addEventListener("change", async ev => {
+    const file = ev.target.files[0];
+    if (!file) return;
+    try { await uploadDoc(`/api/cars/${id}/attachments`, file); showCar(id); }
+    catch (e) { alert(e.message); }
+  });
+}
+
+async function uploadDoc(path, file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  return api(path, { method: "POST", body: fd });
+}
+
+function attachmentsDialog(car, entry) {
+  const dlg = document.createElement("dialog");
+  dlg.innerHTML = `<form method="dialog"><h1>${CAT_LABELS[entry.category]} ${dmy(entry.date)} — attachments</h1>
+    ${entry.attachments.map(a => `
+      <div class="entry"><span class="doc-open" data-open="${a.id}">${esc(a.filename)}</span>
+      <button type="button" class="danger" data-adel="${a.id}">✕</button></div>`).join("") ||
+      '<div class="muted">Nothing attached yet.</div>'}
+    <input type="file" accept="image/*,application/pdf" hidden>
+    <div class="dlg-actions"><button type="button" id="att-add">Attach…</button>
+    <button class="ghost" value="cancel" formnovalidate>Close</button></div></form>`;
+  document.body.append(dlg);
+  dlg.addEventListener("close", () => dlg.remove());
+  dlg.querySelectorAll("[data-open]").forEach(el =>
+    el.addEventListener("click", () => window.open(`/api/attachments/${el.dataset.open}`)));
+  dlg.querySelectorAll("[data-adel]").forEach(b =>
+    b.addEventListener("click", async () => {
+      if (!confirm("Delete this document?")) return;
+      try { await api(`/api/attachments/${b.dataset.adel}`, { method: "DELETE" }); }
+      catch (e) { alert(e.message); return; }
+      dlg.close("cancel"); showCar(car.id);
+    }));
+  $("#att-add", dlg).addEventListener("click", () => $("input[type=file]", dlg).click());
+  $("input[type=file]", dlg).addEventListener("change", async ev => {
+    const file = ev.target.files[0];
+    if (!file) return;
+    try { await uploadDoc(`/api/entries/${entry.id}/attachments`, file); }
+    catch (e) { alert(e.message); return; }
+    dlg.close("cancel"); showCar(car.id);
+  });
+  dlg.showModal();
 }
 
 /* ---------- dialogs ---------- */

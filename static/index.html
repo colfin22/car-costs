@@ -74,10 +74,13 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 @media (prefers-color-scheme: dark) { .due-amber { color: #ffd97a; background: #3a2f12; border-color: #5c4a1e; } }
 .switch { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: .95rem; }
 .switch input { width: auto; }
+button.clip { border: 0; padding: 4px; font-size: .85rem; }
+button.clip.clip-empty { opacity: .35; }
+.doc-open { cursor: pointer; }
 </style>
 </head>
 <body>
 <div id="app"></div>
-<script src="/static/app.js?v=28"></script>
+<script src="/static/app.js?v=29"></script>
 </body>
 </html>

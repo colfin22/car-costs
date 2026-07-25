@@ -23,6 +23,8 @@ from PIL import Image, ImageOps
 
 DB_PATH = os.environ.get("CARCOSTS_DB", os.path.join(os.path.dirname(__file__), "data", "carcosts.db"))
 PHOTO_DIR = os.path.join(os.path.dirname(DB_PATH), "photos")
+DOCS_DIR = os.path.join(os.path.dirname(DB_PATH), "docs")
+MAX_DOC_BYTES = int(os.environ.get("CARCOSTS_MAX_DOC_MB", "10")) * 1024 * 1024
 
 CATEGORIES = ("fuel", "charge", "insurance", "tax", "nct", "service", "odo", "belt", "tyres", "tyre_check", "check")
 TYRE_CORNERS = ("FL", "FR", "RL", "RR")
@@ -166,6 +168,16 @@ def init_db():
           note TEXT DEFAULT ''
         );
         CREATE INDEX IF NOT EXISTS idx_entries_car_date ON entries(car_id, date);
+        CREATE TABLE IF NOT EXISTS attachments (
+          id INTEGER PRIMARY KEY,
+          car_id INTEGER NOT NULL REFERENCES cars(id) ON DELETE CASCADE,
+          entry_id INTEGER REFERENCES entries(id) ON DELETE CASCADE,
+          filename TEXT NOT NULL,
+          media_type TEXT NOT NULL,
+          size INTEGER NOT NULL,
+          created TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_attachments_entry ON attachments(entry_id);
         """)
         have = {r["name"] for r in con.execute("PRAGMA table_info(cars)")}
         for col, typ in (("make", "TEXT DEFAULT ''"), ("model", "TEXT DEFAULT ''"),
@@ -480,7 +492,15 @@ def car_detail(car_id: int, year: int | None = None):
             "SELECT id, date, category, odometer, cost, note, corners, tyre_size, tyre_brand "
             "FROM entries WHERE car_id=? AND category IN ('service','tyres') "
             "ORDER BY date DESC, id DESC", (car_id,))]
+        atts = con.execute(
+            "SELECT id, entry_id, filename, media_type, size, created FROM attachments "
+            "WHERE car_id=? ORDER BY created DESC, id DESC", (car_id,)).fetchall()
+        by_entry = {}
+        for a in atts:
+            if a["entry_id"] is not None:
+                by_entry.setdefault(a["entry_id"], []).append({"id": a["id"], "filename": a["filename"]})
         return {"car": dict(car),
+                "attachments": [dict(a) for a in atts if a["entry_id"] is None],
                 "next_due": car_dues[0] if car_dues else None,
                 "service_due": svc,
                 "belt_due": bd,
@@ -490,7 +510,7 @@ def car_detail(car_id: int, year: int | None = None):
                 "current_odo": cur_val,
                 "summary": year_summary(con, car_id, y),
                 "fuel": fuel_stats(con, car_id),
-                "entries": [dict(e) for e in entries],
+                "entries": [dict(e) | {"attachments": by_entry.get(e["id"], [])} for e in entries],
                 "years": years}
 
 
@@ -577,8 +597,12 @@ def add_entry(car_id: int, e: EntryNew):
 @app.delete("/api/entries/{entry_id}", status_code=204)
 def delete_entry(entry_id: int):
     with db() as con:
+        atts = con.execute("SELECT * FROM attachments WHERE entry_id=?", (entry_id,)).fetchall()
         if con.execute("DELETE FROM entries WHERE id=?", (entry_id,)).rowcount == 0:
             raise HTTPException(404, "no such entry")
+    for att in atts:   # rows went with the FK cascade; files are ours to remove
+        if os.path.isfile(doc_path(att)):
+            os.remove(doc_path(att))
 
 
 @app.post("/api/cars/{car_id}/photo")
@@ -607,6 +631,109 @@ def photo(name: str):
     if not os.path.isfile(path):
         raise HTTPException(404, "no photo")
     return FileResponse(path)
+
+
+# ---- document attachments (issue #15) --------------------------------------
+# Receipts, certs and reports attach to an entry, or to the car itself when a
+# document has no cost entry to hang on (insurance cert after a date-only
+# renewal). Files are stored exactly as uploaded — no resizing, documents must
+# stay legible — under data/docs/, named by attachment id with an extension
+# derived from the sniffed type (never from the client's filename).
+DOC_EXT = {"application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png",
+           "image/webp": "webp", "image/heic": "heic"}
+PIL_TYPES = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp", "HEIF": "image/heic"}
+
+
+def doc_path(att) -> str:
+    return os.path.join(DOCS_DIR, f"{att['id']}.{DOC_EXT[att['media_type']]}")
+
+
+async def _receive_doc(file: UploadFile) -> tuple[str, str, int]:
+    """Stream the upload to a temp file (capped), sniff its real type.
+    Returns (tmp_path, media_type, size); raises 422/413 on bad input."""
+    os.makedirs(DOCS_DIR, exist_ok=True)
+    tmp = os.path.join(DOCS_DIR, f".upload-{pysecrets.token_hex(8)}")
+    size = 0
+    try:
+        with open(tmp, "wb") as out:
+            while chunk := await file.read(256 * 1024):
+                size += len(chunk)
+                if size > MAX_DOC_BYTES:
+                    raise HTTPException(413, f"file too large (max {MAX_DOC_BYTES // (1024 * 1024)} MB)")
+                out.write(chunk)
+        if size == 0:
+            raise HTTPException(422, "empty file")
+        with open(tmp, "rb") as f:
+            head = f.read(8)
+        if head.startswith(b"%PDF"):
+            return tmp, "application/pdf", size
+        try:
+            img = Image.open(tmp)
+            fmt = img.format
+            img.verify()
+        except Exception:
+            raise HTTPException(422, "only PDF and image files (JPEG/PNG/WebP) are accepted")
+        media = PIL_TYPES.get(fmt)
+        if not media:
+            raise HTTPException(422, f"unsupported image format {fmt} — use JPEG/PNG/WebP or PDF")
+        return tmp, media, size
+    except BaseException:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
+
+
+def _store_doc(con, car_id: int, entry_id: int | None, file: UploadFile,
+               tmp: str, media: str, size: int) -> dict:
+    name = os.path.basename(file.filename or "") or f"document.{DOC_EXT[media]}"
+    cur = con.execute(
+        "INSERT INTO attachments (car_id, entry_id, filename, media_type, size, created) "
+        "VALUES (?,?,?,?,?,?)", (car_id, entry_id, name, media, size, date.today().isoformat()))
+    att = dict(con.execute("SELECT * FROM attachments WHERE id=?", (cur.lastrowid,)).fetchone())
+    os.replace(tmp, doc_path(att))
+    return att
+
+
+@app.post("/api/entries/{entry_id}/attachments", status_code=201)
+async def attach_to_entry(entry_id: int, file: UploadFile):
+    with db() as con:
+        row = con.execute("SELECT car_id FROM entries WHERE id=?", (entry_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "no such entry")
+    tmp, media, size = await _receive_doc(file)
+    with db() as con:
+        return _store_doc(con, row["car_id"], entry_id, file, tmp, media, size)
+
+
+@app.post("/api/cars/{car_id}/attachments", status_code=201)
+async def attach_to_car(car_id: int, file: UploadFile):
+    with db() as con:
+        car_or_404(con, car_id)
+    tmp, media, size = await _receive_doc(file)
+    with db() as con:
+        return _store_doc(con, car_id, None, file, tmp, media, size)
+
+
+@app.get("/api/attachments/{att_id}")
+def get_attachment(att_id: int):
+    with db() as con:
+        att = con.execute("SELECT * FROM attachments WHERE id=?", (att_id,)).fetchone()
+    if not att or not os.path.isfile(doc_path(att)):
+        raise HTTPException(404, "no such attachment")
+    safe = att["filename"].replace('"', "")
+    return FileResponse(doc_path(att), media_type=att["media_type"],
+                        headers={"Content-Disposition": f'inline; filename="{safe}"'})
+
+
+@app.delete("/api/attachments/{att_id}", status_code=204)
+def delete_attachment(att_id: int):
+    with db() as con:
+        att = con.execute("SELECT * FROM attachments WHERE id=?", (att_id,)).fetchone()
+        if not att:
+            raise HTTPException(404, "no such attachment")
+        con.execute("DELETE FROM attachments WHERE id=?", (att_id,))
+    if os.path.isfile(doc_path(att)):
+        os.remove(doc_path(att))
 
 
 @app.get("/api/dues")
