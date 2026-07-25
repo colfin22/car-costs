@@ -4,7 +4,7 @@ The ten-minute version, assuming you've never used Docker. If you already run
 containers, the [README's Run section](../README.md#run) is all you need.
 
 Car Costs runs on a computer that stays on at home — an old laptop, a mini PC,
-a Raspberry Pi, or a NAS. Your phone then opens it over your home WiFi.
+a Raspberry Pi, or a NAS. Your phone then opens it over your home WiFi — and from anywhere, once you add Tailscale in step 4.
 
 ## 1. Install Docker
 
@@ -51,7 +51,35 @@ Your phone needs the *computer's* address, not `localhost`:
 Tip: give the computer a fixed IP in your router's settings (often called a
 DHCP reservation) so the address never changes.
 
-## 4. Optional: set a password
+## 4. Use it at the pump — access away from home
+
+The steps above only work on your home WiFi, but the app is built to be used
+at the forecourt. The recommended fix is **[Tailscale](https://tailscale.com/)**
+(free for personal use): it puts your phone and the computer on a private
+network of their own, so the app works anywhere you have signal — with nothing
+exposed to the internet and no router configuration.
+
+1. Create a Tailscale account and install it on the computer running Car
+   Costs ([download page](https://tailscale.com/download)) — on Linux/Pi:
+   `curl -fsSL https://tailscale.com/install.sh | sh`, then `sudo tailscale up`
+   and follow the login link.
+2. Install the Tailscale app on your phone and sign in to the same account.
+3. Run `tailscale ip -4` on the computer (or check the phone app's machine
+   list) — you'll get an address like `100.x.y.z`. On your phone, open
+   `http://100.x.y.z:8000`.
+4. Re-do *Add to Home Screen* with this address — it now works at home **and**
+   at the pump. Leave the Tailscale app connected (it's designed to stay on;
+   battery cost is negligible).
+
+**Alternatives:** [ZeroTier](https://www.zerotier.com/) works the same way if
+you prefer it. **Port forwarding on your router is not recommended** — it
+exposes the app to the whole internet; if you go that route anyway, the
+password in the next step is mandatory, and read the
+[security model](../README.md#security-model-when-exposed-to-the-internet)
+in the README first. With Tailscale/ZeroTier nothing is exposed, and the
+password stays optional.
+
+## 5. Optional: set a password
 
 On your home network the app runs open by default. To gate it behind a
 password (required if you ever expose it to the internet — read the README's
@@ -68,7 +96,7 @@ docker run -d --name carcosts --restart unless-stopped \
 (Removing and re-running the container never touches your data — it lives in
 the `carcosts-data` volume.)
 
-## 5. Backups
+## 6. Backups
 
 Everything — cars, entries, photos, documents — is in one folder. Copy it out
 whenever you like:
@@ -81,14 +109,14 @@ docker run --rm -v carcosts-data:/data -v "$PWD":/backup alpine \
 That drops `carcosts-backup.tar.gz` in your current folder. Keep a copy
 somewhere off the machine.
 
-## 6. Updating
+## 7. Updating
 
 ```
 docker pull ghcr.io/colfin22/car-costs:latest
 docker rm -f carcosts
 ```
 
-…then re-run the same `docker run` command from step 2 (or 4). Data survives —
+…then re-run the same `docker run` command from step 2 (or 5). Data survives —
 it's in the volume, not the container.
 
 ## Troubleshooting
