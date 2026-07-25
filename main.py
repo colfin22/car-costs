@@ -780,7 +780,9 @@ def summary(year: int | None = None, include_archived: bool = False):
 def healthz():
     with db() as con:
         con.execute("SELECT 1")
-    return {"ok": True}
+    # password_set feeds the UI's running-open warning; harmless to expose —
+    # an instance without a password answers every API call anyway.
+    return {"ok": True, "password_set": _password() is not None}
 
 
 @app.get("/")

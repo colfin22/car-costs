@@ -724,3 +724,14 @@ if (deepLink) showCar(+deepLink[1]); else showList();
 
 const deepLink = location.hash.match(/^#car-(\d+)$/);
 if (deepLink) showCar(+deepLink[1]); else showList();
+
+// Running-open warning: the docs treat CARCOSTS_PASSWORD as required; if this
+// instance has none set, say so where it can't be missed.
+fetch("/healthz").then(r => r.json()).then(h => {
+  if (h.password_set === false && !$("#nopw")) {
+    const b = document.createElement("div");
+    b.id = "nopw";
+    b.innerHTML = '⚠️ No password set — anyone who can reach this page can see your cars and documents. <a href="https://github.com/colfin22/car-costs/blob/main/docs/setup.md#5-set-a-password--do-not-skip-this" target="_blank" rel="noopener">Set one (takes a minute)</a>.';
+    document.body.insertBefore(b, app);
+  }
+}).catch(() => {});
