@@ -271,7 +271,10 @@ async function showCar(id, year) {
         <div class="entry"><span class="doc-open" data-open="${a.id}">${esc(a.filename)} <span class="muted">${dmy(a.created)}</span></span>
         <button class="danger" data-adel="${a.id}">✕</button></div>`).join("") ||
         '<div class="muted">No documents yet — certs, receipts and reports live here.</div>'}
-      <button class="ghost" id="add-doc" style="width:100%;margin-top:8px">+ Add document…</button>
+      <div class="row" style="gap:10px;margin-top:8px">
+        <button class="ghost" id="scan-doc" style="flex:1">📷 Scan…</button>
+        <button class="ghost" id="add-doc" style="flex:1">+ Attach file…</button></div>
+      <input type="file" id="doc-scan" accept="image/*" capture="environment" hidden>
       <input type="file" id="doc-file" accept="image/*,application/pdf" hidden>
     </div>`;
   c._tyrePrefill = (() => {
@@ -312,13 +315,15 @@ async function showCar(id, year) {
     b.addEventListener("click", async () => {
       if (confirm("Delete this document?")) { await api(`/api/attachments/${b.dataset.adel}`, { method: "DELETE" }); showCar(id); }
     }));
+  $("#scan-doc").addEventListener("click", () => $("#doc-scan").click());
   $("#add-doc").addEventListener("click", () => $("#doc-file").click());
-  $("#doc-file").addEventListener("change", async ev => {
-    const file = ev.target.files[0];
-    if (!file) return;
-    try { await uploadDoc(`/api/cars/${id}/attachments`, file); showCar(id); }
-    catch (e) { alert(e.message); }
-  });
+  for (const inp of ["#doc-scan", "#doc-file"])
+    $(inp).addEventListener("change", async ev => {
+      const file = ev.target.files[0];
+      if (!file) return;
+      try { await uploadDoc(`/api/cars/${id}/attachments`, file); showCar(id); }
+      catch (e) { alert(e.message); }
+    });
 }
 
 async function uploadDoc(path, file) {
@@ -334,8 +339,10 @@ function attachmentsDialog(car, entry) {
       <div class="entry"><span class="doc-open" data-open="${a.id}">${esc(a.filename)}</span>
       <button type="button" class="danger" data-adel="${a.id}">✕</button></div>`).join("") ||
       '<div class="muted">Nothing attached yet.</div>'}
-    <input type="file" accept="image/*,application/pdf" hidden>
-    <div class="dlg-actions"><button type="button" id="att-add">Attach…</button>
+    <input type="file" class="att-scan" accept="image/*" capture="environment" hidden>
+    <input type="file" class="att-file" accept="image/*,application/pdf" hidden>
+    <div class="dlg-actions"><button type="button" id="att-scan">📷 Scan…</button>
+    <button type="button" class="ghost" id="att-add">Attach file…</button>
     <button class="ghost" value="cancel" formnovalidate>Close</button></div></form>`;
   document.body.append(dlg);
   dlg.addEventListener("close", () => dlg.remove());
@@ -348,14 +355,16 @@ function attachmentsDialog(car, entry) {
       catch (e) { alert(e.message); return; }
       dlg.close("cancel"); showCar(car.id);
     }));
-  $("#att-add", dlg).addEventListener("click", () => $("input[type=file]", dlg).click());
-  $("input[type=file]", dlg).addEventListener("change", async ev => {
-    const file = ev.target.files[0];
-    if (!file) return;
-    try { await uploadDoc(`/api/entries/${entry.id}/attachments`, file); }
-    catch (e) { alert(e.message); return; }
-    dlg.close("cancel"); showCar(car.id);
-  });
+  $("#att-scan", dlg).addEventListener("click", () => $(".att-scan", dlg).click());
+  $("#att-add", dlg).addEventListener("click", () => $(".att-file", dlg).click());
+  dlg.querySelectorAll("input[type=file]").forEach(inp =>
+    inp.addEventListener("change", async ev => {
+      const file = ev.target.files[0];
+      if (!file) return;
+      try { await uploadDoc(`/api/entries/${entry.id}/attachments`, file); }
+      catch (e) { alert(e.message); return; }
+      dlg.close("cancel"); showCar(car.id);
+    }));
   dlg.showModal();
 }
 
@@ -457,7 +466,8 @@ function entryDialog(car, cat) {
        <label>${{ tax: "New tax expiry", nct: "New NCT due date", insurance: "New renewal date" }[cat]} (optional)</label><input name="due" type="date">
        <label>Note</label><input name="note" placeholder="optional">`;
   const docField = cat === "odo" ? "" : `
-      <label>Receipt / report (optional)</label><input name="doc" type="file" accept="image/*,application/pdf">`;
+      <label>Scan receipt / report (optional)</label>
+      <input name="doc" type="file" accept="image/*" capture="environment">`;
   const dlg = dialog(`
     <h1>${CAT_LABELS[cat]} — ${esc(car.name)}</h1>
     <label>Date</label><input name="date" type="date" value="${today()}" required>
