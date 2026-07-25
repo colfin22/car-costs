@@ -456,11 +456,14 @@ function entryDialog(car, cat) {
     : `<label>Amount (€) — leave blank if only setting the date</label><input name="cost" type="number" step="0.01" inputmode="decimal">
        <label>${{ tax: "New tax expiry", nct: "New NCT due date", insurance: "New renewal date" }[cat]} (optional)</label><input name="due" type="date">
        <label>Note</label><input name="note" placeholder="optional">`;
+  const docField = cat === "odo" ? "" : `
+      <label>Receipt / report (optional)</label><input name="doc" type="file" accept="image/*,application/pdf">`;
   const dlg = dialog(`
     <h1>${CAT_LABELS[cat]} — ${esc(car.name)}</h1>
     <label>Date</label><input name="date" type="date" value="${today()}" required>
-    ${unitFields}`, async d => {
+    ${unitFields}${docField}`, async d => {
     const f = new FormData($("form", d));
+    const doc = f.get("doc");
     const dueField = { tax: "tax_due", nct: "nct_due", insurance: "insurance_due" }[cat];
     const hasCost = !!f.get("cost"), hasDue = dueField && !!f.get("due");
     if (dueField && !hasCost && !hasDue) throw new Error("Enter an amount, a date, or both");
@@ -483,9 +486,13 @@ function entryDialog(car, cat) {
       }
       if (cat === "tyre_check")
         body.tread_mm = picked_mm(f, f.getAll("corner"));
-      await api(`/api/cars/${car.id}/entries`, { method: "POST",
+      const made = await api(`/api/cars/${car.id}/entries`, { method: "POST",
         headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    }
+      if (doc && doc.size)
+        await uploadDoc(`/api/entries/${made.id}/attachments`, doc);
+    } else if (doc && doc.size)
+      // date-only renewal creates no entry — keep the scan as a car document
+      await uploadDoc(`/api/cars/${car.id}/attachments`, doc);
     showCar(car.id);
   });
   if (isFuel || isCharge) {
