@@ -158,6 +158,9 @@ Or use the included [docker-compose.yml](docker-compose.yml)
 database, photos and daily backups all live under `/srv/data` — one volume
 covers everything.
 
+Never used Docker? The [step-by-step setup guide](docs/setup.md) takes about
+ten minutes, phone install and backups included.
+
 ### Install it as a phone app (PWA)
 
 There's no app store — there doesn't need to be. The page is an installable
