@@ -321,15 +321,137 @@ async function showCar(id, year) {
     $(inp).addEventListener("change", async ev => {
       const file = ev.target.files[0];
       if (!file) return;
-      try { await uploadDoc(`/api/cars/${id}/attachments`, file); showCar(id); }
+      const doc = inp === "#doc-scan" ? await scanCrop(file) : file;
+      if (!doc) { ev.target.value = ""; return; }
+      try { await uploadDoc(`/api/cars/${id}/attachments`, doc, doc === file ? undefined : "scan.jpg"); showCar(id); }
       catch (e) { alert(e.message); }
     });
 }
 
-async function uploadDoc(path, file) {
+async function uploadDoc(path, file, name) {
   const fd = new FormData();
-  fd.append("file", file);
+  if (name) fd.append("file", file, name); else fd.append("file", file);
   return api(path, { method: "POST", body: fd });
+}
+
+/* ---------- scan cropping (#19) ----------
+   Camera scans run through a crop step: jscanify (OpenCV.js) detects the
+   document outline, the user can drag the corners, and the crop is
+   perspective-corrected before upload. Libraries are self-hosted under
+   /static/vendor/ and lazy-loaded on first scan (~9 MB, then cached).
+   Picker-chosen files skip all of this. */
+let scanLibs = null;
+function loadScanLibs() {
+  if (!scanLibs) scanLibs = (async () => {
+    const load = src => new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = src; s.onload = res; s.onerror = () => rej(new Error("could not load " + src));
+      document.head.append(s);
+    });
+    await load("/static/vendor/opencv.js");
+    for (let i = 0; i < 200 && !(window.cv && cv.Mat); i++)   // wait for wasm/asm init
+      await new Promise(r => setTimeout(r, 50));
+    if (!(window.cv && cv.Mat)) throw new Error("scanner failed to initialise");
+    await load("/static/vendor/jscanify.js");
+  })().catch(e => { scanLibs = null; throw e; });
+  return scanLibs;
+}
+
+// Returns a cropped JPEG Blob, the original file ("Full photo"), or null (cancelled).
+async function scanCrop(file) {
+  let scanner;
+  try { await loadScanLibs(); scanner = new jscanify(); }
+  catch (e) { alert(e.message + " — attaching the full photo instead."); return file; }
+  const url = URL.createObjectURL(file);
+  const img = await new Promise((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i); i.onerror = () => rej(new Error("could not read image"));
+    i.src = url;
+  }).catch(() => null);
+  if (!img) { URL.revokeObjectURL(url); return file; }
+
+  // full-res source canvas (what we extract from) + downscaled preview (what we show)
+  const full = document.createElement("canvas");
+  full.width = img.naturalWidth; full.height = img.naturalHeight;
+  full.getContext("2d").drawImage(img, 0, 0);
+  const scale = Math.min(1, 640 / img.naturalWidth, 640 / img.naturalHeight);
+  const pw = Math.round(img.naturalWidth * scale), ph = Math.round(img.naturalHeight * scale);
+
+  // detect on the preview size (fast); corners live in preview coordinates
+  const det = document.createElement("canvas");
+  det.width = pw; det.height = ph;
+  det.getContext("2d").drawImage(img, 0, 0, pw, ph);
+  let corners = null;
+  try {
+    const contour = scanner.findPaperContour(cv.imread(det));
+    if (contour) {
+      const c = scanner.getCornerPoints(contour);
+      if (c.topLeftCorner && c.topRightCorner && c.bottomLeftCorner && c.bottomRightCorner)
+        corners = [c.topLeftCorner, c.topRightCorner, c.bottomRightCorner, c.bottomLeftCorner];
+    }
+  } catch (e) { /* detection is best-effort; fall through to edge corners */ }
+  if (!corners) {
+    const m = Math.round(Math.min(pw, ph) * 0.05);
+    corners = [{ x: m, y: m }, { x: pw - m, y: m }, { x: pw - m, y: ph - m }, { x: m, y: ph - m }];
+  }
+
+  URL.revokeObjectURL(url);
+  return new Promise(resolve => {
+    const dlg = document.createElement("dialog");
+    dlg.className = "scan-dlg";
+    dlg.innerHTML = `<h1>Crop scan</h1>
+      <p class="hint" style="margin:0 0 8px">Drag the corners onto the document.</p>
+      <div class="scan-wrap"><canvas width="${pw}" height="${ph}"></canvas></div>
+      <div class="dlg-actions"><button type="button" class="ghost" id="sc-cancel">Cancel</button>
+      <button type="button" class="ghost" id="sc-full">Full photo</button>
+      <button type="button" id="sc-crop">Use crop</button></div>`;
+    document.body.append(dlg);
+    const cnv = $("canvas", dlg), ctx = cnv.getContext("2d");
+    const draw = () => {
+      ctx.drawImage(img, 0, 0, pw, ph);
+      ctx.strokeStyle = "#2563eb"; ctx.lineWidth = 2;
+      ctx.beginPath();
+      corners.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+      ctx.closePath(); ctx.stroke();
+      ctx.fillStyle = "#2563eb";
+      for (const p of corners) { ctx.beginPath(); ctx.arc(p.x, p.y, 9, 0, 7); ctx.fill(); }
+    };
+    draw();
+    let held = null;
+    const toCanvas = ev => {
+      const r = cnv.getBoundingClientRect();
+      return { x: (ev.clientX - r.left) * (pw / r.width), y: (ev.clientY - r.top) * (ph / r.height) };
+    };
+    cnv.addEventListener("pointerdown", ev => {
+      const p = toCanvas(ev);
+      let best = null, bestD = 40 * (pw / cnv.getBoundingClientRect().width);
+      corners.forEach(c => { const d = Math.hypot(c.x - p.x, c.y - p.y); if (d < bestD) { best = c; bestD = d; } });
+      if (best) { held = best; cnv.setPointerCapture(ev.pointerId); ev.preventDefault(); }
+    });
+    cnv.addEventListener("pointermove", ev => {
+      if (!held) return;
+      const p = toCanvas(ev);
+      held.x = Math.min(pw, Math.max(0, p.x)); held.y = Math.min(ph, Math.max(0, p.y));
+      draw();
+    });
+    cnv.addEventListener("pointerup", () => held = null);
+    const finish = val => { dlg.close(); dlg.remove(); resolve(val); };
+    $("#sc-cancel", dlg).addEventListener("click", () => finish(null));
+    $("#sc-full", dlg).addEventListener("click", () => finish(file));
+    $("#sc-crop", dlg).addEventListener("click", () => {
+      const f = corners.map(p => ({ x: p.x / scale, y: p.y / scale }));   // back to full-res
+      const [tl, tr, br, bl] = f;
+      const w = Math.round(Math.max(Math.hypot(tr.x - tl.x, tr.y - tl.y), Math.hypot(br.x - bl.x, br.y - bl.y)));
+      const h = Math.round(Math.max(Math.hypot(bl.x - tl.x, bl.y - tl.y), Math.hypot(br.x - tr.x, br.y - tr.y)));
+      try {
+        const out = scanner.extractPaper(full, w, h, {
+          topLeftCorner: tl, topRightCorner: tr, bottomRightCorner: br, bottomLeftCorner: bl });
+        out.toBlob(b => finish(b || file), "image/jpeg", 0.92);
+      } catch (e) { alert("Crop failed — attaching the full photo."); finish(file); }
+    });
+    dlg.addEventListener("cancel", ev => { ev.preventDefault(); finish(null); });
+    dlg.showModal();
+  });
 }
 
 function attachmentsDialog(car, entry) {
@@ -361,7 +483,9 @@ function attachmentsDialog(car, entry) {
     inp.addEventListener("change", async ev => {
       const file = ev.target.files[0];
       if (!file) return;
-      try { await uploadDoc(`/api/entries/${entry.id}/attachments`, file); }
+      const doc = inp.classList.contains("att-scan") ? await scanCrop(file) : file;
+      if (!doc) { ev.target.value = ""; return; }
+      try { await uploadDoc(`/api/entries/${entry.id}/attachments`, doc, doc === file ? undefined : "scan.jpg"); }
       catch (e) { alert(e.message); return; }
       dlg.close("cancel"); showCar(car.id);
     }));
@@ -465,6 +589,7 @@ function entryDialog(car, cat) {
     : `<label>Amount (€) — leave blank if only setting the date</label><input name="cost" type="number" step="0.01" inputmode="decimal">
        <label>${{ tax: "New tax expiry", nct: "New NCT due date", insurance: "New renewal date" }[cat]} (optional)</label><input name="due" type="date">
        <label>Note</label><input name="note" placeholder="optional">`;
+  let scanBlob = null;
   const docField = cat === "odo" ? "" : `
       <label>Scan receipt / report (optional)</label>
       <input name="doc" type="file" accept="image/*" capture="environment">`;
@@ -473,7 +598,7 @@ function entryDialog(car, cat) {
     <label>Date</label><input name="date" type="date" value="${today()}" required>
     ${unitFields}${docField}`, async d => {
     const f = new FormData($("form", d));
-    const doc = f.get("doc");
+    const doc = scanBlob;   // set at pick time, after the crop step
     const dueField = { tax: "tax_due", nct: "nct_due", insurance: "insurance_due" }[cat];
     const hasCost = !!f.get("cost"), hasDue = dueField && !!f.get("due");
     if (dueField && !hasCost && !hasDue) throw new Error("Enter an amount, a date, or both");
@@ -499,11 +624,18 @@ function entryDialog(car, cat) {
       const made = await api(`/api/cars/${car.id}/entries`, { method: "POST",
         headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (doc && doc.size)
-        await uploadDoc(`/api/entries/${made.id}/attachments`, doc);
+        await uploadDoc(`/api/entries/${made.id}/attachments`, doc, doc instanceof File ? undefined : "scan.jpg");
     } else if (doc && doc.size)
       // date-only renewal creates no entry — keep the scan as a car document
-      await uploadDoc(`/api/cars/${car.id}/attachments`, doc);
+      await uploadDoc(`/api/cars/${car.id}/attachments`, doc, doc instanceof File ? undefined : "scan.jpg");
     showCar(car.id);
+  });
+  const docInput = $("input[name=doc]", dlg);
+  if (docInput) docInput.addEventListener("change", async ev => {
+    const file = ev.target.files[0];
+    if (!file) { scanBlob = null; return; }
+    scanBlob = await scanCrop(file);
+    if (!scanBlob) ev.target.value = "";
   });
   if (isFuel || isCharge) {
     const upd = () => {

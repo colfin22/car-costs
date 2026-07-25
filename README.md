@@ -55,8 +55,11 @@ cost per year, per km, and what's due next?*
   between its neighbours in date order).
 - Document attachments: hang receipts, invoices, certs and test reports (PDF or
   photos, 10 MB each) on any entry via the 📎 on its row, or in the car's
-  Documents section for paperwork with no cost attached — on a phone the file
-  picker offers the camera, so "scanning" a receipt is just photographing it.
+  Documents section for paperwork with no cost attached. Scanning opens the
+  camera directly, auto-detects the document's outline (jscanify/OpenCV,
+  self-hosted and loaded only on first scan) and perspective-corrects the crop
+  — with draggable corners for when detection misses, and a plain file picker
+  alongside for PDFs and existing photos.
 
 **A status page per car**
 - Tap-to-upload photo (resized server-side, shown in a consistent 4:3 frame
