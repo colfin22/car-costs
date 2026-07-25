@@ -111,8 +111,8 @@ cost per year, per km, and what's due next?*
   migration when a car goes electric.
 - **Cars come and go**: add cars in the UI; retiring a replaced car keeps its
   full history in a restorable "Retired" section.
-- **Optional password gate** for internet-facing use (details below), exempting
-  internal monitoring/sensor callers. Installable as a home-screen PWA; cars are
+- **Password gate** — set `CARCOSTS_PASSWORD` on every install (details below);
+  internal monitoring/sensor callers on the LAN stay credential-free. Installable as a home-screen PWA; cars are
   deep-linkable (`#car-1`). Dates day-first. Light/dark. No build step, no
   accounts, no cloud.
 
