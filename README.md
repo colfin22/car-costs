@@ -14,7 +14,6 @@ one-handed at the pump.*
 ![License](https://img.shields.io/badge/License-MIT-green)
 [![Docker Pulls](https://img.shields.io/docker/pulls/colfin22/car-costs?logo=docker&logoColor=white)](https://hub.docker.com/r/colfin22/car-costs)
 
-<a href="https://buymeacoffee.com/colfin22"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee"></a>
 
 <p>
 <img src="docs/car-hero-2.png" width="300" alt="Car status page — photo, due badges, renewal banner, entry buttons and year totals">
