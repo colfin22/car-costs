@@ -79,11 +79,11 @@ password in the next step is mandatory, and read the
 in the README first. With Tailscale/ZeroTier nothing is exposed, and the
 password stays optional.
 
-## 5. Optional: set a password
+## 5. Set a password — do not skip this
 
-On your home network the app runs open by default. To gate it behind a
-password (required if you ever expose it to the internet — read the README's
-security-model section first):
+The app starts without a password, but your cars, receipts, certs and
+documents are in here — treat it like any other account and set one before
+you go further. It takes one command (your data is untouched):
 
 ```
 docker rm -f carcosts
@@ -116,7 +116,7 @@ docker pull ghcr.io/colfin22/car-costs:latest
 docker rm -f carcosts
 ```
 
-…then re-run the same `docker run` command from step 2 (or 5). Data survives —
+…then re-run the same `docker run` command from step 5 (the one with your password). Data survives —
 it's in the volume, not the container.
 
 ## Troubleshooting
