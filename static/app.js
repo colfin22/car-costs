@@ -357,8 +357,13 @@ function loadScanLibs() {
   return scanLibs;
 }
 
+// PARKED (#19): crop works in desktop testing but not on-phone; disabled until
+// that's understood. Scans attach as taken.
+const SCAN_CROP_ENABLED = false;
+
 // Returns a cropped JPEG Blob, the original file ("Full photo"), or null (cancelled).
 async function scanCrop(file) {
+  if (!SCAN_CROP_ENABLED) return file;
   let scanner;
   try { await loadScanLibs(); scanner = new jscanify(); }
   catch (e) { alert(e.message + " — attaching the full photo instead."); return file; }
