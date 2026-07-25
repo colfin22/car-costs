@@ -338,7 +338,7 @@ async function uploadDoc(path, file, name) {
    Camera scans run through a crop step: jscanify (OpenCV.js) detects the
    document outline, the user can drag the corners, and the crop is
    perspective-corrected before upload. Libraries are self-hosted under
-   /static/vendor/ and lazy-loaded on first scan (~9 MB, then cached).
+   /static/scanlib/ and lazy-loaded on first scan (~9 MB, then cached).
    Picker-chosen files skip all of this. */
 let scanLibs = null;
 function loadScanLibs() {
@@ -348,11 +348,11 @@ function loadScanLibs() {
       s.src = src; s.onload = res; s.onerror = () => rej(new Error("could not load " + src));
       document.head.append(s);
     });
-    await load("/static/vendor/opencv.js");
+    await load("/static/scanlib/opencv.js");
     for (let i = 0; i < 200 && !(window.cv && cv.Mat); i++)   // wait for wasm/asm init
       await new Promise(r => setTimeout(r, 50));
     if (!(window.cv && cv.Mat)) throw new Error("scanner failed to initialise");
-    await load("/static/vendor/jscanify.js");
+    await load("/static/scanlib/jscanify.js");
   })().catch(e => { scanLibs = null; throw e; });
   return scanLibs;
 }
