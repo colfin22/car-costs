@@ -5,7 +5,7 @@ const eur = n => "€" + Number(n).toLocaleString("en-IE", { minimumFractionDigi
 const today = () => new Date().toISOString().slice(0, 10);
 const dmy = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`;
 const dm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-const CAT_LABELS = { fuel: "Fuel", charge: "Charge", insurance: "Insurance", tax: "Tax", nct: "NCT", service: "Service", odo: "Mileage", belt: "Timing belt", tyres: "Tyres", tyre_check: "Tyre check", check: "Check" };
+const CAT_LABELS = { fuel: "Fuel", charge: "Charge", insurance: "Insurance", tax: "Tax", nct: "NCT", service: "Service", odo: "Mileage", belt: "Timing belt", tyres: "Tyres", tyre_check: "Tyre check", check: "Check", repair: "Repair" };
 const CORNERS = ["FL", "FR", "RL", "RR"];
 const photoUrl = (c, thumb) => c.photo_ver ? `/photos/${c.id}${thumb ? ".thumb" : ""}.jpg?v=${c.photo_ver}` : null;
 function svcBadge(sd) {
@@ -258,10 +258,10 @@ async function showCar(id, year) {
       </div>
     </div>` : ""}
     ${d.service_log && d.service_log.length ? `
-    <div class="card"><div class="muted" style="margin-bottom:4px">Service history</div>
+    <div class="card"><div class="muted" style="margin-bottom:4px">Service &amp; repairs</div>
       <div class="recent-scroll">
       ${d.service_log.map(s => `
-        <div class="entry"><span>${dmy(s.date)}${s.category === "tyres" ? ` <span class="cat">Tyres · ${esc(s.corners || "")}</span>` : ""}${s.odometer ? " · " + Math.round(s.odometer).toLocaleString() + " km" : ""}<br>
+        <div class="entry"><span>${dmy(s.date)}${s.category === "tyres" ? ` <span class="cat">Tyres · ${esc(s.corners || "")}</span>` : s.category === "repair" ? ` <span class="cat">Repair</span>` : ""}${s.odometer ? " · " + Math.round(s.odometer).toLocaleString() + " km" : ""}<br>
           <span class="muted">${esc(s.category === "tyres" ? [s.tyre_brand, s.tyre_size, s.note].filter(Boolean).join(" · ") || "—" : s.note || "—")}</span></span>
         <span>${eur(s.cost)}</span></div>`).join("")}
       </div>
@@ -626,11 +626,13 @@ function serviceChooser(car) {
     <div class="dlg-actions" style="flex-direction:column;align-items:stretch;gap:8px">
     <button value="service">Full service…</button>
     <button value="check">Quick check…</button>
+    <button value="repair">Repair…</button>
     <button class="ghost" value="cancel" formnovalidate>Cancel</button></div></form>`;
   document.body.append(dlg);
   dlg.addEventListener("close", () => {
     if (dlg.returnValue === "service") entryDialog(car, "service");
     if (dlg.returnValue === "check") entryDialog(car, "check");
+    if (dlg.returnValue === "repair") entryDialog(car, "repair");
     dlg.remove();
   });
   dlg.showModal();
@@ -699,6 +701,10 @@ function entryDialog(car, cat) {
       <label>Work done</label><textarea name="note" rows="3" required placeholder="e.g. full service — oil, filters, rear pads"></textarea>
       <label>Amount (€)</label><input name="cost" type="number" step="0.01" inputmode="decimal" required>
       <label>Odometer (km) — optional, anchors the service interval</label><input name="odometer" type="number" step="1" inputmode="numeric">`
+    : cat === "repair" ? `
+      <label>Work done</label><textarea name="note" rows="3" required placeholder="e.g. front brake discs and pads"></textarea>
+      <label>Amount (€)</label><input name="cost" type="number" step="0.01" inputmode="decimal" required>
+      <label>Odometer (km) — optional</label><input name="odometer" type="number" step="1" inputmode="numeric">`
     : cat === "check" ? `
       <label>What did you check?</label><textarea name="note" rows="3" required placeholder="e.g. checked coolant & oil, topped up washer fluid, tyre pressures"></textarea>
       <label>Odometer (km) — optional</label><input name="odometer" type="number" step="1" inputmode="numeric">`

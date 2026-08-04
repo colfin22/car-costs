@@ -26,7 +26,7 @@ PHOTO_DIR = os.path.join(os.path.dirname(DB_PATH), "photos")
 DOCS_DIR = os.path.join(os.path.dirname(DB_PATH), "docs")
 MAX_DOC_BYTES = int(os.environ.get("CARCOSTS_MAX_DOC_MB", "10")) * 1024 * 1024
 
-CATEGORIES = ("fuel", "charge", "insurance", "tax", "nct", "service", "odo", "belt", "tyres", "tyre_check", "check")
+CATEGORIES = ("fuel", "charge", "insurance", "tax", "nct", "service", "odo", "belt", "tyres", "tyre_check", "check", "repair")
 TYRE_CORNERS = ("FL", "FR", "RL", "RR")
 FUEL_TYPES = ("petrol", "diesel", "hybrid", "phev", "ev")
 
@@ -564,7 +564,7 @@ def car_detail(car_id: int, year: int | None = None):
         car_dues.sort(key=lambda i: i["days"])
         service_log = [dict(r) for r in con.execute(
             "SELECT id, date, category, odometer, cost, note, corners, tyre_size, tyre_brand "
-            "FROM entries WHERE car_id=? AND category IN ('service','tyres') "
+            "FROM entries WHERE car_id=? AND category IN ('service','tyres','repair') "
             "ORDER BY date DESC, id DESC", (car_id,))]
         atts = con.execute(
             "SELECT id, entry_id, filename, media_type, size, created FROM attachments "
