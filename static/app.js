@@ -648,6 +648,8 @@ function entryDialog(car, cat) {
       </div>
       <label>Odometer (km)</label><input name="odometer" type="number" step="1" inputmode="numeric" required>
       <label>Amount (€)</label><input name="cost" type="number" step="0.01" inputmode="decimal" required>
+      <label>Tread when new (mm) — blank for none</label>
+      <input name="tread_new" type="number" step="0.1" inputmode="decimal" value="8.0">
       <label>Size</label><input name="tyre_size" value="${esc((car._tyrePrefill || {}).size || "")}" placeholder="e.g. 205/55 R16">
       <label>Brand / model</label><input name="tyre_brand" value="${esc((car._tyrePrefill || {}).brand || "")}" placeholder="e.g. Michelin CrossClimate 2">
       <label>Note</label><input name="note" placeholder="optional">`
@@ -690,6 +692,8 @@ function entryDialog(car, cat) {
       if (cat === "tyres") {
         body.tyre_size = f.get("tyre_size") || "";
         body.tyre_brand = f.get("tyre_brand") || "";
+        if (f.get("tread_new"))   // becomes a same-date baseline check, server-side
+          body.tread_mm = f.getAll("corner").map(k => `${k}=${parseFloat(f.get("tread_new"))}`).join(",");
       }
       if (cat === "tyre_check")
         body.tread_mm = picked_mm(f, f.getAll("corner"));

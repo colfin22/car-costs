@@ -339,6 +339,20 @@ def tyre_checks_current(con, car_id: int):
     return out
 
 
+def normalise_tread(tread_mm: str, corners: str) -> str:
+    """'FL=8,RR=2.75' -> canonical corner order, depths validated as numbers."""
+    pairs = {}
+    for p in (t for t in (tread_mm or "").split(",") if t):
+        k, _, v = p.partition("=")
+        if k not in corners.split(","):
+            raise HTTPException(422, f"tread reading for {k} but that corner isn't selected")
+        try:
+            pairs[k] = float(v)
+        except ValueError:
+            raise HTTPException(422, f"tread depth for {k} must be a number (mm)")
+    return ",".join(f"{k}={pairs[k]:g}" for k in TYRE_CORNERS if k in pairs)
+
+
 def car_or_404(con, car_id: int):
     row = con.execute("SELECT * FROM cars WHERE id=?", (car_id,)).fetchone()
     if not row:
@@ -540,23 +554,19 @@ def add_entry(car_id: int, e: EntryNew):
         if not picked or any(c not in TYRE_CORNERS for c in picked):
             raise HTTPException(422, f"corners must name at least one of {TYRE_CORNERS}")
         e.corners = ",".join(c for c in TYRE_CORNERS if c in picked)
+    baseline_tread = ""
     if e.category == "tyres":
         if cost is None:
             raise HTTPException(422, "amount is required for a tyre entry")
         if e.odometer is None:
             raise HTTPException(422, "odometer reading is required for a tyre entry")
+        # The full-tread baseline lives on a companion check, not here — tyres_current()
+        # never reads tread_mm, so a value left on the fitting row would be invisible.
+        baseline_tread = normalise_tread(e.tread_mm, e.corners)
+        e.tread_mm = ""
     if e.category == "tyre_check":
         cost = 0
-        pairs = {}
-        for p in (t for t in e.tread_mm.split(",") if t):
-            k, _, v = p.partition("=")
-            if k not in e.corners.split(","):
-                raise HTTPException(422, f"tread reading for {k} but that corner isn't selected")
-            try:
-                pairs[k] = float(v)
-            except ValueError:
-                raise HTTPException(422, f"tread depth for {k} must be a number (mm)")
-        e.tread_mm = ",".join(f"{k}={pairs[k]:g}" for k in TYRE_CORNERS if k in pairs)
+        e.tread_mm = normalise_tread(e.tread_mm, e.corners)
     if e.category == "check":
         cost = 0
         if not (e.note or "").strip():
@@ -591,7 +601,17 @@ def add_entry(car_id: int, e: EntryNew):
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (car_id, d, e.category, e.odometer, e.litres, e.price_per_litre,
              e.kwh, e.price_per_kwh, cost, e.note, e.corners, e.tyre_size, e.tyre_brand, e.tread_mm))
-        return dict(con.execute("SELECT * FROM entries WHERE id=?", (cur.lastrowid,)).fetchone())
+        made = dict(con.execute("SELECT * FROM entries WHERE id=?", (cur.lastrowid,)).fetchone())
+        if baseline_tread:
+            # Same date as the fitting: tyre_checks_current() keeps a same-date check and
+            # drops only ones that pre-date the fitting. Carries the fitting's odometer so
+            # wear per km has both ends of the measurement.
+            chk = con.execute(
+                "INSERT INTO entries (car_id, date, category, odometer, cost, note, "
+                "corners, tread_mm) VALUES (?,?,'tyre_check',?,0,?,?,?)",
+                (car_id, d, e.odometer, "Full tread when fitted", e.corners, baseline_tread))
+            made["baseline_check_id"] = chk.lastrowid
+        return made
 
 
 @app.delete("/api/entries/{entry_id}", status_code=204)
