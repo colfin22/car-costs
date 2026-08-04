@@ -30,7 +30,7 @@ CATEGORIES = ("fuel", "charge", "insurance", "tax", "nct", "service", "odo", "be
 TYRE_CORNERS = ("FL", "FR", "RL", "RR")
 FUEL_TYPES = ("petrol", "diesel", "hybrid", "phev", "ev")
 
-APP_VERSION = "1.5.0"   # bump on release; shown on the home screen
+APP_VERSION = "1.6.0"   # bump on release; shown on the home screen
 
 app = FastAPI(title="Car Costs", version=APP_VERSION)
 
