@@ -52,6 +52,9 @@ cost per year, per km, and what's due next?*
 - Odometer readings are validated against the timeline — no backwards or
   impossible values, with backdating fully supported (a reading must simply fit
   between its neighbours in date order).
+- **Tap any entry to see what you logged** — the lists show a one-line
+  summary; tapping opens the full record: every field captured for that entry,
+  its attachments, and a delete.
 - Document attachments: hang receipts, invoices, certs and test reports (PDF or
   photos, 10 MB each) on any entry via the 📎 on its row, or in the car's
   Documents section for paperwork with no cost attached. Scanning opens the
@@ -78,6 +81,10 @@ cost per year, per km, and what's due next?*
   comes first**: badge ("Service in 800 km" / "Service 14/03/27 · 236d"),
   banner when close or overdue, and the time deadline joins the reminder feed.
   Logging a service resets both clocks.
+- **Repairs** — brakes, a clutch, an exhaust — are logged from the same Service
+  button and counted in the year's costs and by-category breakdown, listed
+  alongside services but tagged. Crucially they have **no effect on the service
+  interval**: a repair isn't a service, so it never resets the clock.
 - **Timing belt**, the same dual-deadline treatment (e.g. 160,000 km or 8
   years, whichever first) — but deliberately quiet: belt changes are logged
   from car settings, and nothing appears on the status page until the binding
@@ -92,6 +99,13 @@ cost per year, per km, and what's due next?*
   entry recording which corners you looked at and, optionally, tread depth in
   mm per corner. The grid shows each corner's last check, flagging depths at
   3 mm and below and highlighting anything under the 1.6 mm legal minimum.
+  Fitting new tyres records a full-tread **baseline** (8 mm by default,
+  editable — performance tyres run nearer 7.5, winter nearer 9), so wear has
+  something to measure against from day one. Tap a corner for its history:
+  every reading since those tyres went on, the change since the previous check
+  in mm and km, and — once there are two readings — an estimated wear rate and
+  rough distance to the 1.6 mm minimum. It's labelled an estimate, and there's
+  still no badge and no due date.
 
 **Renewals that close the loop**
 - From 14 days before a due date the car's page prompts *"renewed?"* — one
@@ -119,7 +133,7 @@ cost per year, per km, and what's due next?*
 ## Stack
 
 FastAPI + SQLite (stdlib `sqlite3`, no ORM) + one vanilla-JS page. The database
-and photos live in `data/` (gitignored). ~1,200 lines all-in.
+and photos live in `data/` (gitignored). ~1,900 lines all-in.
 
 The app writes a daily snapshot of the database to `data/backups/` (keeps the
 last 7, `CARCOSTS_BACKUP_KEEP` to change) using SQLite's `VACUUM INTO` — a
@@ -219,7 +233,7 @@ is the nicer phone experience.
 `PATCH /api/cars/{id}` (details, due dates, service/belt intervals,
 `ev_enabled`, `archived`; an explicit `null` clears a nullable field) ·
 `GET /api/cars/{id}?year=` (includes `next_due`, `service_due`, `belt_due`,
-`service_log`) · `POST /api/cars/{id}/entries` · `DELETE /api/entries/{id}` ·
+`service_log`, `tyre_history`) · `POST /api/cars/{id}/entries` · `DELETE /api/entries/{id}` ·
 `POST /api/cars/{id}/photo` · `GET /api/dues` ·
 `GET /api/summary[?year=&include_archived=]` (all cars + dues in one payload,
 for driving several Home Assistant sensors from a single poll) · `GET /healthz`
