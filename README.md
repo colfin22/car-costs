@@ -16,9 +16,9 @@ one-handed at the pump.*
 
 
 <p>
-<img src="docs/car-hero-3.png" width="300" alt="Car status page — photo, due badges, renewal banner, entry buttons and year totals including a repair">
+<img src="docs/car-hero-4.png" width="300" alt="Car status page — photo, due badges, renewal banner, entry buttons and year totals including a repair">
 &nbsp;
-<img src="docs/tread-repairs-home.png" width="300" alt="A corner's tread history with its wear estimate, the service and repairs log, and the home screen listing each car's year total and fuel stats">
+<img src="docs/tread-repairs-home-2.png" width="300" alt="A corner's tread history with its wear estimate, the service and repairs log, and the home screen listing each car's year total and fuel stats">
 </p>
 
 </div>
