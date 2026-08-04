@@ -252,7 +252,7 @@ async function showCar(id, year) {
             : "";
           chkLine = `<br><span class="muted">checked ${dmy(chk.date)}</span> ${mm}`;
         }
-        return `<div><b>${k}</b> <span class="muted">${dmy(t.date)}${km !== null ? " · " + km.toLocaleString() + " km" : ""}</span><br>
+        return `<div class="entry-tap" data-corner="${k}"><b>${k}</b> <span class="muted">${dmy(t.date)}${km !== null ? " · " + km.toLocaleString() + " km" : ""}</span><br>
           <span class="muted">${esc([t.brand, t.size].filter(Boolean).join(" · ") || "—")}</span>${chkLine}</div>`;
       }).join("")}
       </div>
@@ -309,6 +309,9 @@ async function showCar(id, year) {
       const e = d.entries.find(en => en.id === +b.dataset.att);
       attachmentsDialog(c, e);
     }));
+  app.querySelectorAll("[data-corner]").forEach(cell =>
+    cell.addEventListener("click", () =>
+      tyreHistoryDialog(c, cell.dataset.corner, (d.tyre_history || {})[cell.dataset.corner])));
   app.querySelectorAll("[data-entry]").forEach(row =>
     row.addEventListener("click", ev => {
       if (ev.target.closest("button")) return;   // 📎 and ✕ keep their own handlers
@@ -462,6 +465,44 @@ async function scanCrop(file) {
     dlg.addEventListener("cancel", ev => { ev.preventDefault(); finish(null); });
     dlg.showModal();
   });
+}
+
+/* One corner's tread readings since its tyres were fitted. Wear rate and the
+   distance left are estimates from two points — labelled as such, and never a
+   badge or a due date: tyre wear isn't a calendar. */
+function tyreHistoryDialog(car, corner, h) {
+  const km = n => Math.round(n).toLocaleString("en-IE");
+  const fitted = h && h.fitted;
+  const rows = (h && h.readings || []).map((r, i, all) => {
+    const last = i === all.length - 1;
+    let sub = "";
+    if (r.delta_mm !== null && r.delta_mm !== undefined)
+      sub = `${r.delta_mm > 0 ? "+" : "−"}${Math.abs(r.delta_mm)} mm`
+        + (r.km ? ` over ${km(r.km)} km` : " (no mileage recorded)");
+    else if (last && fitted && r.date === fitted.date) sub = "fitted new";
+    return `<div class="entry"><span>${dmy(r.date)}${sub ? `<br><span class="muted">${sub}</span>` : ""}</span>
+      <span>${treadCell(r.mm)}</span></div>`;
+  }).join("");
+
+  let est = "";
+  if (h && h.rate_mm_per_10k)
+    est = `<p class="hint" style="margin:10px 0 0">Estimate from ${h.readings.length} readings:
+      <b>${h.rate_mm_per_10k} mm per 10,000 km</b>${h.km_to_legal
+        ? `<br>roughly <b>${km(h.km_to_legal)} km</b> before this corner reaches the 1.6 mm legal minimum`
+        : ""}.</p>`;
+  else if (h && h.readings && h.readings.length < 2)
+    est = `<p class="hint" style="margin:10px 0 0">No wear figure yet — that needs a second check.</p>`;
+
+  const dlg = document.createElement("dialog");
+  dlg.innerHTML = `<form method="dialog">
+    <h1>${corner}${fitted && fitted.brand ? " — " + esc(fitted.brand) : ""}</h1>
+    ${fitted ? `<p class="hint" style="margin:0 0 10px">Fitted ${dmy(fitted.date)}${fitted.size ? " · " + esc(fitted.size) : ""}</p>` : ""}
+    ${rows || '<div class="muted">No tread readings for this corner yet.</div>'}
+    ${est}
+    <div class="dlg-actions"><button class="ghost" value="cancel" formnovalidate>Close</button></div></form>`;
+  document.body.append(dlg);
+  dlg.addEventListener("close", () => dlg.remove());
+  dlg.showModal();
 }
 
 /* Read-only detail of one entry — everything logged at entry time, which the
@@ -640,6 +681,7 @@ function entryDialog(car, cat) {
         <label style="display:inline-flex;align-items:center;gap:4px;margin:0;min-width:52px"><input type="checkbox" name="corner" value="${k}" checked>${k}</label>
         <input name="mm_${k}" type="number" step="0.1" inputmode="decimal" placeholder="mm" style="width:80px">
       </div>`).join("")}
+      <label>Odometer (km) — optional, sharpens the wear estimate</label><input name="odometer" type="number" step="1" inputmode="numeric">
       <label>Note</label><input name="note" placeholder="e.g. all okay">`
     : cat === "tyres" ? `
       <label>Corners</label>

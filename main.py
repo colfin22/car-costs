@@ -339,6 +339,63 @@ def tyre_checks_current(con, car_id: int):
     return out
 
 
+LEGAL_TREAD_MM = 1.6
+
+
+def tyre_history(con, car_id: int):
+    """Per corner: every tread reading since that corner's current tyres were
+    fitted, newest first, with the wear between consecutive readings and — once
+    there are two readings to work from — an estimated wear rate and how far
+    off the legal minimum is. Readings from before the fitting are dropped, so
+    a new tyre starts a fresh history (same rule as tyre_checks_current)."""
+    fitted = tyres_current(con, car_id)
+    rows = con.execute(
+        "SELECT id, date, corners, tread_mm, odometer FROM entries "
+        "WHERE car_id=? AND category='tyre_check' ORDER BY date DESC, id DESC",
+        (car_id,)).fetchall()
+    odo_cache = {}
+    out = {}
+    for r in rows:
+        mm = dict(p.split("=", 1) for p in (r["tread_mm"] or "").split(",") if "=" in p)
+        for corner in (r["corners"] or "").split(","):
+            if corner not in TYRE_CORNERS or corner not in mm:
+                continue
+            f = fitted.get(corner)
+            if f and r["date"] < f["date"]:
+                continue
+            # A check rarely carries its own odometer; fall back to the reading
+            # that stood on that date so older entries still yield km figures.
+            if r["odometer"] is not None:
+                odo, inferred = r["odometer"], False
+            else:
+                if r["date"] not in odo_cache:
+                    odo_cache[r["date"]] = current_odo_of(con, car_id, r["date"])
+                odo, inferred = odo_cache[r["date"]], True
+            out.setdefault(corner, []).append(
+                {"entry_id": r["id"], "date": r["date"], "mm": float(mm[corner]),
+                 "odometer": odo, "odo_inferred": inferred and odo is not None})
+
+    result = {}
+    for corner, readings in out.items():
+        for i, cur in enumerate(readings):            # newest first
+            prev = readings[i + 1] if i + 1 < len(readings) else None
+            cur["delta_mm"] = round(cur["mm"] - prev["mm"], 2) if prev else None
+            cur["km"] = (round(cur["odometer"] - prev["odometer"])
+                         if prev and None not in (cur["odometer"], prev["odometer"]) else None)
+        latest, oldest = readings[0], readings[-1]
+        rate = km_left = None
+        if len(readings) > 1 and None not in (latest["odometer"], oldest["odometer"]):
+            worn = oldest["mm"] - latest["mm"]
+            km = latest["odometer"] - oldest["odometer"]
+            if worn > 0 and km > 0:                   # a deeper reading than before proves nothing
+                rate = round(worn / km * 10000, 2)    # mm per 10,000 km
+                if latest["mm"] > LEGAL_TREAD_MM:
+                    km_left = round((latest["mm"] - LEGAL_TREAD_MM) / rate * 10000)
+        result[corner] = {"readings": readings, "rate_mm_per_10k": rate, "km_to_legal": km_left,
+                          "fitted": fitted.get(corner)}
+    return result
+
+
 def normalise_tread(tread_mm: str, corners: str) -> str:
     """'FL=8,RR=2.75' -> canonical corner order, depths validated as numbers."""
     pairs = {}
@@ -406,10 +463,13 @@ DUE_LABELS = {"nct_due": "NCT", "nct_booked": "NCT test",
               "tax_due": "Tax", "insurance_due": "Insurance"}
 
 
-def current_odo_of(con, car_id: int):
+def current_odo_of(con, car_id: int, on_date: str = None):
+    """Latest odometer reading, optionally as it stood on a given date."""
     r = con.execute(
         "SELECT odometer FROM entries WHERE car_id=? AND odometer IS NOT NULL "
-        "ORDER BY date DESC, id DESC LIMIT 1", (car_id,)).fetchone()
+        + ("AND date <= ? " if on_date else "")
+        + "ORDER BY date DESC, id DESC LIMIT 1",
+        (car_id, on_date) if on_date else (car_id,)).fetchone()
     return r["odometer"] if r else None
 
 
@@ -520,6 +580,7 @@ def car_detail(car_id: int, year: int | None = None):
                 "belt_due": bd,
                 "tyres": tyres_current(con, car_id),
                 "tyre_checks": tyre_checks_current(con, car_id),
+                "tyre_history": tyre_history(con, car_id),
                 "service_log": service_log,
                 "current_odo": cur_val,
                 "summary": year_summary(con, car_id, y),
