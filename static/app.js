@@ -49,6 +49,10 @@ async function api(path, opts) {
 }
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+// One /healthz call, used twice: the version line on the home screen and the
+// no-password warning at the bottom of this file.
+const health = fetch("/healthz").then(r => r.json()).catch(() => ({}));
+
 /* ---------- car list ---------- */
 async function showList() {
   if (location.hash.startsWith("#car-")) history.replaceState(null, "", location.pathname);
@@ -74,6 +78,10 @@ async function showList() {
           <div class="row"><span class="nm">${esc(c.name)}</span>
           <span class="muted">retired · ${eur(c.summary.total)} this year</span></div>
         </div>`).join("") : ""));
+  const ver = (await health).version;
+  if (ver) app.insertAdjacentHTML("beforeend",
+    `<div class="ver"><a href="https://github.com/colfin22/car-costs/releases/tag/v${encodeURIComponent(ver)}"
+      target="_blank" rel="noopener">v${esc(ver)}</a></div>`);
   $("#add-car").addEventListener("click", () => dialog(`
     <h1>Add car</h1>
     <label>Name</label><input name="name" required>
@@ -846,7 +854,7 @@ if (deepLink) showCar(+deepLink[1]); else showList();
 
 // Running-open warning: the docs treat CARCOSTS_PASSWORD as required; if this
 // instance has none set, say so where it can't be missed.
-fetch("/healthz").then(r => r.json()).then(h => {
+health.then(h => {
   if (h.password_set === false && !$("#nopw")) {
     const b = document.createElement("div");
     b.id = "nopw";

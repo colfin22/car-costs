@@ -30,7 +30,9 @@ CATEGORIES = ("fuel", "charge", "insurance", "tax", "nct", "service", "odo", "be
 TYRE_CORNERS = ("FL", "FR", "RL", "RR")
 FUEL_TYPES = ("petrol", "diesel", "hybrid", "phev", "ev")
 
-app = FastAPI(title="Car Costs")
+APP_VERSION = "1.5.0"   # bump on release; shown on the home screen
+
+app = FastAPI(title="Car Costs", version=APP_VERSION)
 
 # ---- auth: magpie-pattern gate for tunnel-facing traffic -------------------
 # Auth is ON only when CARCOSTS_PASSWORD is set (env / systemd EnvironmentFile).
@@ -863,7 +865,7 @@ def healthz():
         con.execute("SELECT 1")
     # password_set feeds the UI's running-open warning; harmless to expose —
     # an instance without a password answers every API call anyway.
-    return {"ok": True, "password_set": _password() is not None}
+    return {"ok": True, "version": APP_VERSION, "password_set": _password() is not None}
 
 
 @app.get("/")
