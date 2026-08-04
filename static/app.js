@@ -231,7 +231,7 @@ async function showCar(id, year) {
     <div class="card"><div class="muted" style="margin-bottom:4px">Recent</div>
       <div class="recent-scroll">
       ${d.entries.map(e => `
-        <div class="entry"><span>${dmy(e.date)} <span class="cat">${CAT_LABELS[e.category]}</span>
+        <div class="entry entry-tap" data-entry="${e.id}"><span>${dmy(e.date)} <span class="cat">${CAT_LABELS[e.category]}</span>
           ${e.litres ? e.litres + "L @" + (e.price_per_litre || 0).toFixed(3) : ""}
           ${e.kwh ? e.kwh + "kWh" : ""} ${esc(e.note || "")}</span>
         <span>${e.category === "odo" ? Math.round(e.odometer).toLocaleString() + " km" : eur(e.cost)} <button class="ghost clip${e.attachments.length ? "" : " clip-empty"}" data-att="${e.id}" title="Attachments">📎${e.attachments.length || ""}</button><button class="danger" data-del="${e.id}">✕</button></span></div>`).join("") ||
@@ -308,6 +308,11 @@ async function showCar(id, year) {
     b.addEventListener("click", () => {
       const e = d.entries.find(en => en.id === +b.dataset.att);
       attachmentsDialog(c, e);
+    }));
+  app.querySelectorAll("[data-entry]").forEach(row =>
+    row.addEventListener("click", ev => {
+      if (ev.target.closest("button")) return;   // 📎 and ✕ keep their own handlers
+      entryDetailDialog(c, d.entries.find(en => en.id === +row.dataset.entry));
     }));
   app.querySelectorAll("[data-open]").forEach(el =>
     el.addEventListener("click", () => window.open(`/api/attachments/${el.dataset.open}`)));
@@ -457,6 +462,68 @@ async function scanCrop(file) {
     dlg.addEventListener("cancel", ev => { ev.preventDefault(); finish(null); });
     dlg.showModal();
   });
+}
+
+/* Read-only detail of one entry — everything logged at entry time, which the
+   Recent line has no room for. Editing lives in its own issue. */
+function treadCell(mm) {
+  const cls = mm < 1.6 ? "due-red" : mm <= 3 ? "due-amber" : null;
+  return cls ? `<span class="due ${cls}">${mm} mm</span>` : `${mm} mm`;
+}
+
+function entryDetailDialog(car, entry) {
+  if (!entry) return;
+  const rows = [];
+  const add = (label, value) => { if (value !== null && value !== undefined && value !== "") rows.push([label, value]); };
+  const num = n => Number(n).toLocaleString("en-IE");
+
+  add("Date", dmy(entry.date));
+  add("Category", CAT_LABELS[entry.category]);
+  if (entry.category === "fuel") {
+    add("Litres", entry.litres ? entry.litres + " L" : null);
+    add("Price", entry.price_per_litre ? "€" + entry.price_per_litre.toFixed(3) + "/L" : null);
+  }
+  if (entry.category === "charge") {
+    add("Energy", entry.kwh ? entry.kwh + " kWh" : null);
+    add("Price", entry.price_per_kwh ? "€" + entry.price_per_kwh.toFixed(3) + "/kWh" : null);
+  }
+  if (entry.category === "tyres") {
+    add("Corners fitted", (entry.corners || "").split(",").filter(Boolean).join(", "));
+    add("Brand", entry.tyre_brand ? esc(entry.tyre_brand) : null);
+    add("Size", entry.tyre_size ? esc(entry.tyre_size) : null);
+  }
+  if (entry.category === "tyre_check") {
+    const checked = (entry.corners || "").split(",").filter(Boolean);
+    add("Corners checked", checked.join(", "));
+    const mm = {};
+    for (const p of (entry.tread_mm || "").split(",").filter(Boolean)) {
+      const [k, v] = p.split("=");
+      if (!isNaN(parseFloat(v))) mm[k] = parseFloat(v);
+    }
+    const depths = CORNERS.filter(k => mm[k] !== undefined)
+      .map(k => `<b>${k}</b> ${treadCell(mm[k])}`).join(" &nbsp; ");
+    add("Tread", depths || null);
+  }
+  add("Odometer", entry.odometer != null ? num(Math.round(entry.odometer)) + " km" : null);
+  if (entry.category !== "odo") add("Amount", eur(entry.cost));
+  add("Note", entry.note ? esc(entry.note).replace(/\n/g, "<br>") : null);
+
+  const dlg = document.createElement("dialog");
+  dlg.innerHTML = `<form method="dialog"><h1>${CAT_LABELS[entry.category]} — ${dmy(entry.date)}</h1>
+    <dl class="kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>
+    <div class="dlg-actions"><button type="button" id="det-att" class="ghost">📎 Attachments${entry.attachments.length ? " (" + entry.attachments.length + ")" : ""}</button>
+    <button type="button" class="danger" id="det-del">Delete</button>
+    <button class="ghost" value="cancel" formnovalidate>Close</button></div></form>`;
+  document.body.append(dlg);
+  dlg.addEventListener("close", () => dlg.remove());
+  $("#det-att", dlg).addEventListener("click", () => { dlg.close("cancel"); attachmentsDialog(car, entry); });
+  $("#det-del", dlg).addEventListener("click", async () => {
+    if (!confirm("Delete this entry?" + (entry.attachments.length ? " Its attachments go too." : ""))) return;
+    try { await api(`/api/entries/${entry.id}`, { method: "DELETE" }); }
+    catch (e) { alert(e.message); return; }
+    dlg.close("cancel"); showCar(car.id);
+  });
+  dlg.showModal();
 }
 
 function attachmentsDialog(car, entry) {

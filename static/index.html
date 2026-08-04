@@ -81,11 +81,15 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 button.clip { border: 0; padding: 4px; font-size: .85rem; }
 button.clip.clip-empty { opacity: .35; }
 .doc-open { cursor: pointer; }
+.entry-tap { cursor: pointer; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0 0 14px; }
+.kv dt { color: var(--muted); font-size: .9rem; }
+.kv dd { margin: 0; font-size: .95rem; overflow-wrap: anywhere; }
 .scan-dlg canvas { width: 100%; height: auto; border-radius: 10px; touch-action: none; display: block; }
 </style>
 </head>
 <body>
 <div id="app"></div>
-<script src="/static/app.js?v=35"></script>
+<script src="/static/app.js?v=36"></script>
 </body>
 </html>
