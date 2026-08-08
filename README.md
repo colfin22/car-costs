@@ -17,9 +17,9 @@ one-handed at the pump.*
 <a href="https://buymeacoffee.com/colfin22"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee"></a>
 
 <p>
-<img src="docs/car-hero-4.png" width="300" alt="Car status page — photo, due badges, renewal banner, entry buttons and year totals including a repair">
+<img src="docs/car-hero-5.png" width="300" alt="Car status page — photo, due badges, renewal banner, the fuel, toll and parking buttons, and year totals broken down by category including tolls and parking">
 &nbsp;
-<img src="docs/tread-repairs-home-2.png" width="300" alt="A corner's tread history with its wear estimate, the service and repairs log, and the home screen listing each car's year total and fuel stats">
+<img src="docs/tread-repairs-home-3.png" width="300" alt="A corner's tread history with its wear estimate, the service and repairs log, and the home screen listing each car's year total and fuel stats">
 </p>
 
 </div>
@@ -29,7 +29,8 @@ Open it, tap a car, add the entry. That's the entire workflow.
 - **Log in seconds** — a fill is amount + odometer at the pump; tax, insurance,
   NCT and servicing are dated amounts, freely backdatable.
 - **See what it really costs** — year total by category, cost per km, L/100km,
-  per car.
+  per car. Tolls and parking count too, either per journey or as a monthly
+  total off a tag account.
 - **Never miss a date** — badges and banners from 14 days out, plus phone
   reminders through Home Assistant.
 
@@ -107,12 +108,17 @@ cost per year, per km, and what's due next?*
   in mm and km, and — once there are two readings — an estimated wear rate and
   rough distance to the 1.6 mm minimum. It's labelled an estimate, and there's
   still no badge and no due date.
-- **Tolls and parking** are logged from the Running costs button and land in the
-  year total, the by-category breakdown and the cost per km like any other
-  spend. Each takes either a single charge (one journey, one stay) or a monthly
-  total off a tag account or a parking permit, so a statement is one entry
-  instead of forty. Both styles share one Tolls line and one Parking line in the
-  totals, and monthly rows are marked as such in the recent list.
+- **Tolls and parking** get a button each on the car page and land in the year
+  total, the by-category breakdown and the cost per km like any other spend.
+  Each takes either a single charge (one journey, one stay) or a monthly total
+  off a tag account or a parking permit, so a statement is one entry instead of
+  forty — picking monthly swaps the date field to a month picker. Both styles
+  share one Tolls line and one Parking line in the totals, and monthly rows are
+  marked as such in the recent list.
+- The entry buttons stay short on a phone: **fuel, toll and parking** on the
+  main row (plus charge on an EV), **mileage** beside it, and two groups behind
+  a tap — **renewals** (insurance, tax, NCT) and **running costs** (servicing
+  and tyres, each with the choices described below).
 
 **Renewals that close the loop**
 - From 14 days before a due date the car's page prompts *"renewed?"* — one
