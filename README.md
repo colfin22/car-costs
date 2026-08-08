@@ -107,6 +107,12 @@ cost per year, per km, and what's due next?*
   in mm and km, and — once there are two readings — an estimated wear rate and
   rough distance to the 1.6 mm minimum. It's labelled an estimate, and there's
   still no badge and no due date.
+- **Tolls and parking** are logged from the Running costs button and land in the
+  year total, the by-category breakdown and the cost per km like any other
+  spend. Each takes either a single charge (one journey, one stay) or a monthly
+  total off a tag account or a parking permit, so a statement is one entry
+  instead of forty. Both styles share one Tolls line and one Parking line in the
+  totals, and monthly rows are marked as such in the recent list.
 
 **Renewals that close the loop**
 - From 14 days before a due date the car's page prompts *"renewed?"* — one
