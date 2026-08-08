@@ -7,8 +7,8 @@ const dmy = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`;
 const dm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 const CAT_LABELS = { fuel: "Fuel", charge: "Charge", insurance: "Insurance", tax: "Tax", nct: "NCT", service: "Service", odo: "Mileage", belt: "Timing belt", tyres: "Tyres", tyre_check: "Tyre check", check: "Check", repair: "Repair", toll: "Toll", parking: "Parking" };
 const PERIODIC = ["toll", "parking"];   // also take a monthly total, not just one charge
-const CHOOSER_LABELS ={ renewals: "Renewals", running: "Running costs" };
-const CHOOSER_CATS = { renewals: ["insurance", "tax", "nct"], running: ["odo", "toll", "parking"] };
+const CHOOSER_LABELS = { renewals: "Renewals", running: "Running costs" };
+const CHOOSER_CATS = { renewals: ["insurance", "tax", "nct"], running: ["odo", "service", "tyres"] };
 const CORNERS = ["FL", "FR", "RL", "RR"];
 const photoUrl = (c, thumb) => c.photo_ver ? `/photos/${c.id}${thumb ? ".thumb" : ""}.jpg?v=${c.photo_ver}` : null;
 function svcBadge(sd) {
@@ -207,7 +207,7 @@ async function showCar(id, year) {
   const c = d.car, s = d.summary;
   const cats = Object.entries(s.by_category).map(([k, v]) =>
     `<div class="total-line"><span class="cat">${CAT_LABELS[k] || k}</span><span>${eur(v)}</span></div>`).join("");
-  const addBtns = ["fuel", ...(c.ev_enabled ? ["charge"] : []), "service", "tyres"]
+  const addBtns = ["fuel", ...(c.ev_enabled ? ["charge"] : []), "toll", "parking"]
     .map(k => `<button data-cat="${k}">+ ${CAT_LABELS[k]}</button>`).join("");
   const smallBtns = ["renewals", "running"]
     .map(k => `<button class="small ghost" data-cat="${k}">+ ${CHOOSER_LABELS[k]}…</button>`).join("");
@@ -646,7 +646,12 @@ function catChooser(car, group) {
     <button class="ghost" value="cancel" formnovalidate>Cancel</button></div></form>`;
   document.body.append(dlg);
   dlg.addEventListener("close", () => {
-    if (cats.includes(dlg.returnValue)) entryDialog(car, dlg.returnValue);
+    const v = dlg.returnValue;
+    // Service and tyres have their own second step, so hand off rather than
+    // going straight to an entry form.
+    if (v === "service") serviceChooser(car);
+    else if (v === "tyres") tyreChooser(car);
+    else if (cats.includes(v)) entryDialog(car, v);
     dlg.remove();
   });
   dlg.showModal();
