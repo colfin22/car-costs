@@ -5,10 +5,10 @@ const eur = n => "€" + Number(n).toLocaleString("en-IE", { minimumFractionDigi
 const today = () => new Date().toISOString().slice(0, 10);
 const dmy = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`;
 const dm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-const CAT_LABELS = { fuel: "Fuel", charge: "Charge", insurance: "Insurance", tax: "Tax", nct: "NCT", service: "Service", odo: "Mileage", belt: "Timing belt", tyres: "Tyres", tyre_check: "Tyre check", check: "Check", repair: "Repair", toll: "Toll", parking: "Parking" };
+const CAT_LABELS = { fuel: "Fuel", charge: "Charge", insurance: "Insurance", tax: "Tax", nct: "NCT", service: "Service", odo: "Mileage", belt: "Timing belt", tyres: "Tyres", tyre_check: "Tyre check", check: "Check", repair: "Repair", toll: "Toll", parking: "Parking", misc: "Misc" };
 const PERIODIC = ["toll", "parking"];   // also take a monthly total, not just one charge
 const CHOOSER_LABELS = { renewals: "Renewals", running: "Running costs" };
-const CHOOSER_CATS = { renewals: ["insurance", "tax", "nct"], running: ["service", "tyres"] };
+const CHOOSER_CATS = { renewals: ["insurance", "tax", "nct"], running: ["service", "tyres", "misc"] };
 const CORNERS = ["FL", "FR", "RL", "RR"];
 const photoUrl = (c, thumb) => c.photo_ver ? `/photos/${c.id}${thumb ? ".thumb" : ""}.jpg?v=${c.photo_ver}` : null;
 function svcBadge(sd) {
@@ -748,6 +748,9 @@ function entryDialog(car, cat) {
     : cat === "check" ? `
       <label>What did you check?</label><textarea name="note" rows="3" required placeholder="e.g. checked coolant & oil, topped up washer fluid, tyre pressures"></textarea>
       <label>Odometer (km) — optional</label><input name="odometer" type="number" step="1" inputmode="numeric">`
+    : cat === "misc" ? `
+      <label>What was it?</label><input name="note" required placeholder="e.g. car wash, air pump">
+      <label>Amount (€)</label><input name="cost" type="number" step="0.01" inputmode="decimal" required>`
     : PERIODIC.includes(cat) ? `
       <div class="row" style="justify-content:flex-start;gap:14px">
         <label style="display:inline-flex;align-items:center;gap:4px;margin:0"><input type="radio" name="period" value="" checked>One ${cat === "toll" ? "journey" : "stay"}</label>

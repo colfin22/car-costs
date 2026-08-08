@@ -115,10 +115,14 @@ cost per year, per km, and what's due next?*
   forty — picking monthly swaps the date field to a month picker. Both styles
   share one Tolls line and one Parking line in the totals, and monthly rows are
   marked as such in the recent list.
+- **Misc** catches the small stuff that fits nowhere else — a car wash, a few
+  euro in the air pump. A dated amount and a note saying what it was, counted in
+  the totals and the cost per km like everything else. The note is required,
+  because an amount with nothing beside it tells you nothing a year later.
 - The entry buttons stay short on a phone: **fuel, toll and parking** on the
   main row (plus charge on an EV), **mileage** beside it, and two groups behind
-  a tap — **renewals** (insurance, tax, NCT) and **running costs** (servicing
-  and tyres, each with the choices described below).
+  a tap — **renewals** (insurance, tax, NCT) and **running costs** (servicing,
+  tyres and misc, each with the choices described below).
 
 **Renewals that close the loop**
 - From 14 days before a due date the car's page prompts *"renewed?"* — one
