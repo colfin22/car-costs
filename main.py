@@ -1,9 +1,13 @@
 """Car Costs — a small self-hosted running-costs tracker for the household cars.
 
 FastAPI + SQLite, no ORM. The UI is a single mobile-first page (static/).
-Categories: fuel, insurance, tax, nct, service — plus charge (kWh), which the
-UI only shows for cars with the electric toggle on, so an EV/PHEV can be
-enabled later with no schema change.
+Categories: fuel, insurance, tax, nct, service, toll, parking — plus charge
+(kWh), which the UI only shows for cars with the electric toggle on, so an
+EV/PHEV can be enabled later with no schema change.
+
+Toll and parking entries carry a `period`: '' for a single charge, 'month' for
+a monthly total off a tag account or a parking permit. Monthly entries are
+stored dated to the 1st of their month.
 """
 import hashlib
 import hmac
@@ -26,11 +30,12 @@ PHOTO_DIR = os.path.join(os.path.dirname(DB_PATH), "photos")
 DOCS_DIR = os.path.join(os.path.dirname(DB_PATH), "docs")
 MAX_DOC_BYTES = int(os.environ.get("CARCOSTS_MAX_DOC_MB", "10")) * 1024 * 1024
 
-CATEGORIES = ("fuel", "charge", "insurance", "tax", "nct", "service", "odo", "belt", "tyres", "tyre_check", "check", "repair")
+CATEGORIES = ("fuel", "charge", "insurance", "tax", "nct", "service", "odo", "belt", "tyres", "tyre_check", "check", "repair", "toll", "parking")
+PERIODIC = ("toll", "parking")   # categories that also accept a monthly total
 TYRE_CORNERS = ("FL", "FR", "RL", "RR")
 FUEL_TYPES = ("petrol", "diesel", "hybrid", "phev", "ev")
 
-APP_VERSION = "1.6.0"   # bump on release; shown on the home screen
+APP_VERSION = "1.7.0"   # bump on release; shown on the home screen
 
 app = FastAPI(title="Car Costs", version=APP_VERSION)
 
@@ -194,7 +199,7 @@ def init_db():
             if col not in have:
                 con.execute(f"ALTER TABLE cars ADD COLUMN {col} {typ}")
         have_e = {r["name"] for r in con.execute("PRAGMA table_info(entries)")}
-        for col in ("corners", "tyre_size", "tyre_brand", "tread_mm"):
+        for col in ("corners", "tyre_size", "tyre_brand", "tread_mm", "period"):
             if col not in have_e:
                 con.execute(f"ALTER TABLE entries ADD COLUMN {col} TEXT DEFAULT ''")
         if con.execute("SELECT COUNT(*) c FROM cars").fetchone()["c"] == 0:
@@ -241,6 +246,7 @@ class EntryNew(BaseModel):
     tyre_size: str = ""          # tyres: e.g. 205/55 R16
     tyre_brand: str = ""         # tyres: e.g. Michelin CrossClimate 2
     tread_mm: str = ""           # tyre_check: e.g. FL=4.0,FR=3.5
+    period: str = ""             # toll/parking: "" one charge, "month" a monthly total
 
 
 def add_months(d: date, months: int) -> date:
@@ -596,6 +602,13 @@ def add_entry(car_id: int, e: EntryNew):
     if e.category not in CATEGORIES:
         raise HTTPException(422, f"category must be one of {CATEGORIES}")
     d = e.date or date.today().isoformat()
+    if e.period not in ("", "month"):
+        raise HTTPException(422, "period must be '' or 'month'")
+    if e.period and e.category not in PERIODIC:
+        raise HTTPException(422, f"a monthly total is only allowed for {PERIODIC}")
+    if e.period == "month":
+        # Two monthly totals for the same month must not land on different days.
+        d = d[:8] + "01"
     cost = e.cost
     if cost is None and e.category == "fuel" and e.litres and e.price_per_litre:
         cost = round(e.litres * e.price_per_litre, 2)
@@ -634,6 +647,8 @@ def add_entry(car_id: int, e: EntryNew):
         cost = 0
         if not (e.note or "").strip():
             raise HTTPException(422, "a note is required for a check (what did you check?)")
+    if e.category in PERIODIC and cost is None:
+        raise HTTPException(422, f"amount is required for a {e.category} entry")
     if e.category == "fuel":
         if cost is None:
             raise HTTPException(422, "amount is required for a fuel entry")
@@ -660,10 +675,11 @@ def add_entry(car_id: int, e: EntryNew):
                     f"{nxt['odometer']:g} km")
         cur = con.execute(
             "INSERT INTO entries (car_id, date, category, odometer, litres, price_per_litre, "
-            "kwh, price_per_kwh, cost, note, corners, tyre_size, tyre_brand, tread_mm) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "kwh, price_per_kwh, cost, note, corners, tyre_size, tyre_brand, tread_mm, period) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (car_id, d, e.category, e.odometer, e.litres, e.price_per_litre,
-             e.kwh, e.price_per_kwh, cost, e.note, e.corners, e.tyre_size, e.tyre_brand, e.tread_mm))
+             e.kwh, e.price_per_kwh, cost, e.note, e.corners, e.tyre_size, e.tyre_brand,
+             e.tread_mm, e.period))
         made = dict(con.execute("SELECT * FROM entries WHERE id=?", (cur.lastrowid,)).fetchone())
         if baseline_tread:
             # Same date as the fitting: tyre_checks_current() keeps a same-date check and

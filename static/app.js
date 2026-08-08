@@ -5,7 +5,10 @@ const eur = n => "€" + Number(n).toLocaleString("en-IE", { minimumFractionDigi
 const today = () => new Date().toISOString().slice(0, 10);
 const dmy = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}`;
 const dm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-const CAT_LABELS = { fuel: "Fuel", charge: "Charge", insurance: "Insurance", tax: "Tax", nct: "NCT", service: "Service", odo: "Mileage", belt: "Timing belt", tyres: "Tyres", tyre_check: "Tyre check", check: "Check", repair: "Repair" };
+const CAT_LABELS = { fuel: "Fuel", charge: "Charge", insurance: "Insurance", tax: "Tax", nct: "NCT", service: "Service", odo: "Mileage", belt: "Timing belt", tyres: "Tyres", tyre_check: "Tyre check", check: "Check", repair: "Repair", toll: "Toll", parking: "Parking" };
+const PERIODIC = ["toll", "parking"];   // also take a monthly total, not just one charge
+const CHOOSER_LABELS = { renewals: "Renewals", running: "Running costs" };
+const CHOOSER_CATS = { renewals: ["insurance", "tax", "nct"], running: ["odo", "service", "tyres"] };
 const CORNERS = ["FL", "FR", "RL", "RR"];
 const photoUrl = (c, thumb) => c.photo_ver ? `/photos/${c.id}${thumb ? ".thumb" : ""}.jpg?v=${c.photo_ver}` : null;
 function svcBadge(sd) {
@@ -204,10 +207,10 @@ async function showCar(id, year) {
   const c = d.car, s = d.summary;
   const cats = Object.entries(s.by_category).map(([k, v]) =>
     `<div class="total-line"><span class="cat">${CAT_LABELS[k] || k}</span><span>${eur(v)}</span></div>`).join("");
-  const addBtns = ["fuel", ...(c.ev_enabled ? ["charge"] : []), "service", "tyres"]
+  const addBtns = ["fuel", ...(c.ev_enabled ? ["charge"] : []), "toll", "parking"]
     .map(k => `<button data-cat="${k}">+ ${CAT_LABELS[k]}</button>`).join("");
-  const smallBtns = ["odo", "insurance", "tax", "nct"]
-    .map(k => `<button class="small ghost" data-cat="${k}">+ ${CAT_LABELS[k]}</button>`).join("");
+  const smallBtns = ["renewals", "running"]
+    .map(k => `<button class="small ghost" data-cat="${k}">+ ${CHOOSER_LABELS[k]}…</button>`).join("");
   const yearOpts = (d.years.length ? d.years : [String(s.year)])
     .map(y => `<option ${+y === s.year ? "selected" : ""}>${y}</option>`).join("");
   const detailBits = [c.year, c.make, c.model].filter(Boolean).join(" ");
@@ -239,7 +242,7 @@ async function showCar(id, year) {
     <div class="card"><div class="muted" style="margin-bottom:4px">Recent</div>
       <div class="recent-scroll">
       ${d.entries.map(e => `
-        <div class="entry entry-tap" data-entry="${e.id}"><span>${dmy(e.date)} <span class="cat">${CAT_LABELS[e.category]}</span>
+        <div class="entry entry-tap" data-entry="${e.id}"><span>${dmy(e.date)} <span class="cat">${CAT_LABELS[e.category]}${e.period === "month" ? " (monthly)" : ""}</span>
           ${e.litres ? e.litres + "L @" + (e.price_per_litre || 0).toFixed(3) : ""}
           ${e.kwh ? e.kwh + "kWh" : ""} ${esc(e.note || "")}</span>
         <span>${e.category === "odo" ? Math.round(e.odometer).toLocaleString() + " km" : eur(e.cost)} <button class="ghost clip${e.attachments.length ? "" : " clip-empty"}" data-att="${e.id}" title="Attachments">📎${e.attachments.length || ""}</button><button class="danger" data-del="${e.id}">✕</button></span></div>`).join("") ||
@@ -306,6 +309,8 @@ async function showCar(id, year) {
     b.addEventListener("click", () =>
       b.dataset.cat === "tyres" ? tyreChooser(c)
         : b.dataset.cat === "service" ? serviceChooser(c)
+        : b.dataset.cat === "renewals" ? catChooser(c, "renewals")
+        : b.dataset.cat === "running" ? catChooser(c, "running")
         : entryDialog(c, b.dataset.cat)));
   wireBanners(c);
   app.querySelectorAll("[data-del]").forEach(b =>
@@ -528,6 +533,8 @@ function entryDetailDialog(car, entry) {
 
   add("Date", dmy(entry.date));
   add("Category", CAT_LABELS[entry.category]);
+  if (PERIODIC.includes(entry.category))
+    add("Covers", entry.period === "month" ? "A whole month" : "One " + (entry.category === "toll" ? "journey" : "stay"));
   if (entry.category === "fuel") {
     add("Litres", entry.litres ? entry.litres + " L" : null);
     add("Price", entry.price_per_litre ? "€" + entry.price_per_litre.toFixed(3) + "/L" : null);
@@ -628,6 +635,28 @@ function dialog(html, onSubmit) {
   return dlg;
 }
 
+/* Renewals and running costs each sit behind one button, so the car page keeps a
+   single short row and the primary buttons stay above the fold on a phone. */
+function catChooser(car, group) {
+  const cats = CHOOSER_CATS[group];
+  const dlg = document.createElement("dialog");
+  dlg.innerHTML = `<form method="dialog"><h1>${CHOOSER_LABELS[group]} — ${esc(car.name)}</h1>
+    <div class="dlg-actions" style="flex-direction:column;align-items:stretch;gap:8px">
+    ${cats.map(k => `<button value="${k}">${CAT_LABELS[k]}…</button>`).join("")}
+    <button class="ghost" value="cancel" formnovalidate>Cancel</button></div></form>`;
+  document.body.append(dlg);
+  dlg.addEventListener("close", () => {
+    const v = dlg.returnValue;
+    // Service and tyres have their own second step, so hand off rather than
+    // going straight to an entry form.
+    if (v === "service") serviceChooser(car);
+    else if (v === "tyres") tyreChooser(car);
+    else if (cats.includes(v)) entryDialog(car, v);
+    dlg.remove();
+  });
+  dlg.showModal();
+}
+
 function serviceChooser(car) {
   const dlg = document.createElement("dialog");
   dlg.innerHTML = `<form method="dialog"><h1>Service — ${esc(car.name)}</h1>
@@ -716,6 +745,14 @@ function entryDialog(car, cat) {
     : cat === "check" ? `
       <label>What did you check?</label><textarea name="note" rows="3" required placeholder="e.g. checked coolant & oil, topped up washer fluid, tyre pressures"></textarea>
       <label>Odometer (km) — optional</label><input name="odometer" type="number" step="1" inputmode="numeric">`
+    : PERIODIC.includes(cat) ? `
+      <div class="row" style="justify-content:flex-start;gap:14px">
+        <label style="display:inline-flex;align-items:center;gap:4px;margin:0"><input type="radio" name="period" value="" checked>One ${cat === "toll" ? "journey" : "stay"}</label>
+        <label style="display:inline-flex;align-items:center;gap:4px;margin:0"><input type="radio" name="period" value="month">Monthly total</label>
+      </div>
+      <label>Amount (€)</label><input name="cost" type="number" step="0.01" inputmode="decimal" required>
+      <label>${cat === "toll" ? "Road or plaza" : "Location"}</label>
+      <input name="note" placeholder="${cat === "toll" ? "e.g. M50 eFlow" : "e.g. Q-Park Cork"}">`
     : `<label>Amount (€) — leave blank if only setting the date</label><input name="cost" type="number" step="0.01" inputmode="decimal">
        <label>${{ tax: "New tax expiry", nct: "New NCT due date", insurance: "New renewal date" }[cat]} (optional)</label><input name="due" type="date">
        <label>Note</label><input name="note" placeholder="optional">`;
@@ -753,6 +790,10 @@ function entryDialog(car, cat) {
       }
       if (cat === "tyre_check")
         body.tread_mm = picked_mm(f, f.getAll("corner"));
+      if (PERIODIC.includes(cat) && f.get("period") === "month") {
+        body.period = "month";
+        body.date = f.get("date") + "-01";   // the field is a month picker
+      }
       const made = await api(`/api/cars/${car.id}/entries`, { method: "POST",
         headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (doc && doc.size)
@@ -762,6 +803,16 @@ function entryDialog(car, cat) {
       await uploadDoc(`/api/cars/${car.id}/attachments`, doc, doc instanceof File ? undefined : "scan.jpg");
     showCar(car.id);
   });
+  if (PERIODIC.includes(cat)) {
+    // A monthly total belongs to a month, not a day — swap the picker to match.
+    const dateInput = $("input[name=date]", dlg), label = $("label", dlg);
+    dlg.querySelectorAll("input[name=period]").forEach(r => r.addEventListener("change", () => {
+      const monthly = r.value === "month" && r.checked;
+      label.textContent = monthly ? "Month" : "Date";
+      dateInput.type = monthly ? "month" : "date";
+      dateInput.value = monthly ? today().slice(0, 7) : today();
+    }));
+  }
   const docInput = $("input[name=doc]", dlg);
   if (docInput) docInput.addEventListener("change", async ev => {
     const file = ev.target.files[0];
