@@ -1,7 +1,7 @@
 """Car Costs — a small self-hosted running-costs tracker for the household cars.
 
 FastAPI + SQLite, no ORM. The UI is a single mobile-first page (static/).
-Categories: fuel, insurance, tax, nct, service, toll, parking — plus charge
+Categories: fuel, insurance, tax, nct, service, toll, parking, misc — plus charge
 (kWh), which the UI only shows for cars with the electric toggle on, so an
 EV/PHEV can be enabled later with no schema change.
 
@@ -30,7 +30,7 @@ PHOTO_DIR = os.path.join(os.path.dirname(DB_PATH), "photos")
 DOCS_DIR = os.path.join(os.path.dirname(DB_PATH), "docs")
 MAX_DOC_BYTES = int(os.environ.get("CARCOSTS_MAX_DOC_MB", "10")) * 1024 * 1024
 
-CATEGORIES = ("fuel", "charge", "insurance", "tax", "nct", "service", "odo", "belt", "tyres", "tyre_check", "check", "repair", "toll", "parking")
+CATEGORIES = ("fuel", "charge", "insurance", "tax", "nct", "service", "odo", "belt", "tyres", "tyre_check", "check", "repair", "toll", "parking", "misc")
 PERIODIC = ("toll", "parking")   # categories that also accept a monthly total
 TYRE_CORNERS = ("FL", "FR", "RL", "RR")
 FUEL_TYPES = ("petrol", "diesel", "hybrid", "phev", "ev")
@@ -649,6 +649,12 @@ def add_entry(car_id: int, e: EntryNew):
             raise HTTPException(422, "a note is required for a check (what did you check?)")
     if e.category in PERIODIC and cost is None:
         raise HTTPException(422, f"amount is required for a {e.category} entry")
+    if e.category == "misc":
+        if cost is None:
+            raise HTTPException(422, "amount is required for a misc entry")
+        # The note is the only record of what it actually was.
+        if not (e.note or "").strip():
+            raise HTTPException(422, "a note is required for a misc entry (what was it?)")
     if e.category == "fuel":
         if cost is None:
             raise HTTPException(422, "amount is required for a fuel entry")
