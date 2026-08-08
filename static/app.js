@@ -8,7 +8,7 @@ const dm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 const CAT_LABELS = { fuel: "Fuel", charge: "Charge", insurance: "Insurance", tax: "Tax", nct: "NCT", service: "Service", odo: "Mileage", belt: "Timing belt", tyres: "Tyres", tyre_check: "Tyre check", check: "Check", repair: "Repair", toll: "Toll", parking: "Parking" };
 const PERIODIC = ["toll", "parking"];   // also take a monthly total, not just one charge
 const CHOOSER_LABELS = { renewals: "Renewals", running: "Running costs" };
-const CHOOSER_CATS = { renewals: ["insurance", "tax", "nct"], running: ["odo", "service", "tyres"] };
+const CHOOSER_CATS = { renewals: ["insurance", "tax", "nct"], running: ["service", "tyres"] };
 const CORNERS = ["FL", "FR", "RL", "RR"];
 const photoUrl = (c, thumb) => c.photo_ver ? `/photos/${c.id}${thumb ? ".thumb" : ""}.jpg?v=${c.photo_ver}` : null;
 function svcBadge(sd) {
@@ -209,8 +209,11 @@ async function showCar(id, year) {
     `<div class="total-line"><span class="cat">${CAT_LABELS[k] || k}</span><span>${eur(v)}</span></div>`).join("");
   const addBtns = ["fuel", ...(c.ev_enabled ? ["charge"] : []), "toll", "parking"]
     .map(k => `<button data-cat="${k}">+ ${CAT_LABELS[k]}</button>`).join("");
-  const smallBtns = ["renewals", "running"]
-    .map(k => `<button class="small ghost" data-cat="${k}">+ ${CHOOSER_LABELS[k]}…</button>`).join("");
+  // Mileage is a reading rather than a cost, so it gets its own button instead
+  // of sitting under a heading about money.
+  const smallBtns = `<button class="small ghost" data-cat="odo">+ ${CAT_LABELS.odo}</button>`
+    + ["renewals", "running"]
+      .map(k => `<button class="small ghost" data-cat="${k}">+ ${CHOOSER_LABELS[k]}…</button>`).join("");
   const yearOpts = (d.years.length ? d.years : [String(s.year)])
     .map(y => `<option ${+y === s.year ? "selected" : ""}>${y}</option>`).join("");
   const detailBits = [c.year, c.make, c.model].filter(Boolean).join(" ");
