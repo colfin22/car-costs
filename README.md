@@ -78,10 +78,11 @@ cost per year, per km, and what's due next?*
   it, for a wheel, a paint defect or crash damage, which are whole photos with
   no document in them to find. An expense only offers Scan, because what belongs
   on a fuel or toll entry is its receipt.
-- Tick "Keep camera open for more" and the camera comes straight back after each
-  one, so a set of damage photos or a receipt that runs to several pages is one
-  trip rather than several. Each lands as it is taken and the list catches up
-  when you untick.
+- Every scan and pic offers Take another, so a set of damage photos or a receipt
+  running to several pages is one trip rather than several. Each lands as it is
+  taken and the list catches up when you are done. It is a button rather than
+  something you set beforehand because a phone only reopens the camera from a
+  real tap.
 
 **A status page per car**
 - Tap-to-upload photo (resized server-side, shown in a consistent 4:3 frame

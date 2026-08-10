@@ -294,8 +294,6 @@ async function showCar(id, year) {
         <button class="ghost" id="photo-doc" style="flex:1">📷 Pic</button>
         <button class="ghost" id="scan-doc" style="flex:1">📄 Scan</button>
         <button class="ghost" id="add-doc" style="flex:1">📁 File</button></div>
-      <label class="switch" style="margin-top:10px"><input type="checkbox" id="doc-again">
-        Keep camera open for more</label>
       <input type="file" id="doc-scan" accept="image/*" capture="environment" hidden>
       <input type="file" id="doc-photo" accept="image/*" capture="environment" hidden>
       <input type="file" id="doc-file" accept="image/*,application/pdf" hidden>
@@ -356,10 +354,12 @@ async function showCar(id, year) {
   $("#photo-doc").addEventListener("click", () => $("#doc-photo").click());
   $("#add-doc").addEventListener("click", () => $("#doc-file").click());
 
-  // A batch keeps the camera coming back. Uploads are chained rather than fired
-  // in parallel, and rows are appended as they land: a full re-render mid-batch
-  // would destroy the very input the camera is attached to.
-  const more = () => $("#doc-again").checked;
+  // Several in a row: each camera attachment offers another go. The reopen has
+  // to happen inside a real tap, which is why this is a button and not something
+  // you set beforehand — a `change` event grants no user activation on a phone,
+  // so a camera opened from one is silently refused. Uploads are chained rather
+  // than fired in parallel, and rows are appended as they land: a full re-render
+  // mid-run would destroy the very input the camera is attached to.
   let queue = Promise.resolve(), shot = 0;
   const addRow = att => {
     const empty = $("#doc-empty");
@@ -374,9 +374,22 @@ async function showCar(id, year) {
     });
     $("#doc-list").append(row);
   };
-  // Leaving the batch is the moment to catch up with the server properly.
-  $("#doc-again").addEventListener("change", ev => {
-    if (!ev.target.checked) queue.then(() => showCar(id));
+  // Asked while the upload runs, so the camera comes back without waiting on it.
+  const askAnother = (el, what) => new Promise(resolve => {
+    const dlg = document.createElement("dialog");
+    dlg.innerHTML = `<h1>${what} attached</h1>
+      <p class="hint" style="margin:0">Take another, or you are done.</p>
+      <div class="dlg-actions"><button type="button" class="ghost" id="ta-done">Done</button>
+      <button type="button" id="ta-more">Take another</button></div>`;
+    document.body.append(dlg);
+    const end = more => { dlg.close(); dlg.remove(); resolve(more); };
+    $("#ta-more", dlg).addEventListener("click", () => {
+      el.value = ""; el.click();   // inside the tap, which is the whole point
+      end(true);
+    });
+    $("#ta-done", dlg).addEventListener("click", () => end(false));
+    dlg.addEventListener("cancel", ev => { ev.preventDefault(); end(false); });
+    dlg.showModal();
   });
 
   for (const inp of ["#doc-scan", "#doc-photo", "#doc-file"])
@@ -385,22 +398,21 @@ async function showCar(id, year) {
       if (!file) return;
       let doc = file;
       if (inp === "#doc-scan") {
-        doc = await scanCrop(file, el, more);   // reopens itself on accept if `more`
-        if (doc === SCAN_RETAKE) return;
+        doc = await scanCrop(file, el);
+        if (doc === SCAN_RETAKE) return;   // scanCrop already reopened the camera
         if (!doc) { el.value = ""; return; }
-      } else if (inp === "#doc-photo" && more()) {
-        // Reopen before uploading, not after: the click has to ride this change
-        // event's user gesture and an await would have spent it.
-        el.value = ""; el.click();
       }
-      const batched = inp !== "#doc-file" && more();
-      const name = doc === file ? undefined : (batched ? `scan-${++shot}.jpg` : "scan.jpg");
-      queue = queue.then(async () => {
-        try {
-          const att = await uploadDoc(`/api/cars/${id}/attachments`, doc, name);
-          if (batched) addRow(att); else showCar(id);
-        } catch (e) { alert(e.message); }
+      // Scans share one name, so a second in a row would collide.
+      const name = doc === file ? undefined : (++shot > 1 ? `scan-${shot}.jpg` : "scan.jpg");
+      const upload = queue = queue.then(async () => {
+        try { return await uploadDoc(`/api/cars/${id}/attachments`, doc, name); }
+        catch (e) { alert(e.message); }
       });
+      if (inp === "#doc-file") { await upload; showCar(id); return; }
+      const more = await askAnother(el, inp === "#doc-scan" ? "Scan" : "Photo");
+      const att = await upload;
+      if (!more) showCar(id);
+      else if (att) addRow(att);
     });
 }
 
@@ -425,9 +437,7 @@ async function uploadDoc(path, file, name) {
    not a failure though — a car part, a paint defect or crash damage is a whole
    photo by design, so that path keeps "Attach as taken" as the main action. */
 const SCAN_RETAKE = Symbol("retake");
-// `more` is an optional predicate: true at accept time means reopen the camera
-// for another, which only the Docs and pics card asks for.
-async function scanCrop(file, input, more) {
+async function scanCrop(file, input) {
   let crop = null;
   try {
     const fd = new FormData();
@@ -468,14 +478,8 @@ async function scanCrop(file, input, more) {
       if (input) { input.value = ""; input.click(); }
       finish(SCAN_RETAKE);
     });
-    // Accepting inside a batch reopens the camera on the same terms as Retake:
-    // inside the click, value cleared first, nothing awaited in between.
-    const accept = val => {
-      if (more && more() && input) { input.value = ""; input.click(); }
-      finish(val);
-    };
-    $("#sc-full", dlg).addEventListener("click", () => accept(file));
-    if (crop) $("#sc-crop", dlg).addEventListener("click", () => accept(crop));
+    $("#sc-full", dlg).addEventListener("click", () => finish(file));
+    if (crop) $("#sc-crop", dlg).addEventListener("click", () => finish(crop));
     dlg.addEventListener("cancel", ev => { ev.preventDefault(); finish(null); });   // Esc abandons the scan
     dlg.showModal();
   });
