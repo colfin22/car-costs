@@ -81,10 +81,15 @@ async function showList() {
           <div class="row"><span class="nm">${esc(c.name)}</span>
           <span class="muted">retired · ${eur(c.summary.total)} this year</span></div>
         </div>`).join("") : ""));
-  const ver = (await health).version;
-  if (ver) app.insertAdjacentHTML("beforeend",
-    `<div class="ver"><a href="https://github.com/colfin22/car-costs/releases/tag/v${encodeURIComponent(ver)}"
-      target="_blank" rel="noopener">v${esc(ver)}</a></div>`);
+  const h = await health;
+  if (h.version) app.insertAdjacentHTML("beforeend",
+    `<div class="ver"><a href="https://github.com/colfin22/car-costs/releases/tag/v${encodeURIComponent(h.version)}"
+      target="_blank" rel="noopener">v${esc(h.version)}</a>` +
+    // Only worth offering where there is a password to be a second factor to.
+    (h.password_set ? ` · <a href="#" id="security">Security</a>` : "") + `</div>`);
+  if ($("#security")) $("#security").addEventListener("click", ev => {
+    ev.preventDefault(); securityDialog();
+  });
   $("#add-car").addEventListener("click", () => dialog(`
     <h1>Add car</h1>
     <label>Name</label><input name="name" required>
@@ -631,11 +636,86 @@ function dialog(html, onSubmit) {
     <button value="save">Save</button></div></form>`;
   document.body.append(dlg);
   dlg.addEventListener("close", async () => {
-    if (dlg.returnValue === "save") { try { await onSubmit(dlg); } catch (e) { alert(e.message); } }
+    if (dlg.returnValue === "save" && onSubmit) { try { await onSubmit(dlg); } catch (e) { alert(e.message); } }
     dlg.remove();
   });
   dlg.showModal();
   return dlg;
+}
+
+/* ---------- security: optional second factor at login ---------- */
+/* The session cookie is unchanged by any of this — 2FA only adds a step at
+   /login, so once you are in, nothing else in the app behaves differently. */
+async function securityDialog() {
+  const st = await api("/api/totp");
+  if (!st.available) return void dialog(`<h1>Two-factor login</h1>
+    <p class="muted">This install is missing the <code>pyotp</code> package. Add it and restart to use a second factor.</p>`);
+
+  const dlg = document.createElement("dialog");
+  dlg.innerHTML = `<form method="dialog"><h1>Two-factor login</h1>
+    <p class="muted">${st.enabled
+      ? `On. Your password alone is not enough to sign in.<br>Recovery codes left: <b>${st.backup_codes_remaining}</b>.`
+      : "Off. Add a 6-digit code from an authenticator app on top of your password."}</p>
+    <div class="dlg-actions" style="flex-direction:column;align-items:stretch;gap:8px">
+    ${st.enabled
+      ? `<button value="codes">New recovery codes…</button><button value="off">Turn off…</button>`
+      : `<button value="on">Set it up…</button>`}
+    <button class="ghost" value="cancel" formnovalidate>Close</button></div></form>`;
+  document.body.append(dlg);
+  dlg.addEventListener("close", () => {
+    const v = dlg.returnValue;
+    dlg.remove();
+    if (v === "on") totpSetupDialog();
+    else if (v === "off") codePrompt("Turn off two-factor login",
+      "Enter a current code to confirm.", "/api/totp/disable",
+      () => alert("Two-factor login is off."));
+    else if (v === "codes") codePrompt("New recovery codes",
+      "Enter a current code. This replaces any codes you already have.",
+      "/api/totp/backup-codes", r => showBackupCodes(r.backup_codes));
+  });
+  dlg.showModal();
+}
+
+/* Enrolment: the secret is minted server-side but stays inactive until a code
+   confirms it, so a bad scan cannot lock you out. */
+async function totpSetupDialog() {
+  const s = await api("/api/totp/setup", { method: "POST" });
+  enableStep(`<h1>Scan this</h1>
+    <div class="qr">${s.qr_svg}</div>
+    <p class="muted">Can't scan? Enter this key by hand:<br><code class="secret">${esc(s.secret)}</code></p>`);
+}
+
+function enableStep(header) {
+  dialog(header + `<label>Code from the app</label>
+    <input name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="6 digits" required>`,
+    async d => {
+      try {
+        const r = await api("/api/totp/enable", { method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: new FormData($("form", d)).get("code") }) });
+        showBackupCodes(r.backup_codes);
+      } catch (e) {
+        // Ask again against the SAME pending secret, so a mistyped code does
+        // not mean scanning the QR a second time.
+        enableStep(`<h1>Try again</h1><p class="muted">${esc(e.message)}</p>`);
+      }
+    });
+}
+
+function codePrompt(title, msg, url, onDone) {
+  dialog(`<h1>${title}</h1><p class="muted">${msg}</p>
+    <label>Code</label>
+    <input name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="6 digits or a recovery code" required>`,
+    async d => onDone(await api(url, { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: new FormData($("form", d)).get("code") }) })));
+}
+
+/* Shown once and never again — the server only keeps hashes. */
+function showBackupCodes(codes) {
+  dialog(`<h1>Recovery codes</h1>
+    <p class="muted">Each works once, in place of a code from the app. Save them now. They are not shown again.</p>
+    <pre class="codes">${codes.map(esc).join("\n")}</pre>`);
 }
 
 /* Renewals and running costs each sit behind one button, so the car page keeps a

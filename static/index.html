@@ -88,11 +88,16 @@ button.clip.clip-empty { opacity: .35; }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0 0 14px; }
 .kv dt { color: var(--muted); font-size: .9rem; }
 .kv dd { margin: 0; font-size: .95rem; overflow-wrap: anywhere; }
+.qr { background: #fff; border-radius: 10px; padding: 8px; margin: 0 auto 12px; width: min(220px, 60vw); }
+.qr svg { display: block; width: 100%; height: auto; }
+.secret { font-size: 1rem; letter-spacing: .06em; overflow-wrap: anywhere; }
+.codes { font-size: 1rem; line-height: 1.7; letter-spacing: .06em; text-align: center; margin: 0 0 4px;
+         background: rgba(128, 128, 128, .1); border-radius: 10px; padding: 12px; }
 .scan-dlg canvas { width: 100%; height: auto; border-radius: 10px; touch-action: none; display: block; }
 </style>
 </head>
 <body>
 <div id="app"></div>
-<script src="/static/app.js?v=44"></script>
+<script src="/static/app.js?v=45"></script>
 </body>
 </html>

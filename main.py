@@ -12,6 +12,7 @@ stored dated to the 1st of their month.
 import hashlib
 import hmac
 import ipaddress
+import json
 import os
 import secrets as pysecrets
 import sqlite3
@@ -38,6 +39,29 @@ FUEL_TYPES = ("petrol", "diesel", "hybrid", "phev", "ev")
 APP_VERSION = "1.8.0"   # bump on release; shown on the home screen
 
 app = FastAPI(title="Car Costs", version=APP_VERSION)
+
+
+@contextmanager
+def db():
+    con = sqlite3.connect(DB_PATH)
+    con.row_factory = sqlite3.Row
+    con.execute("PRAGMA foreign_keys = ON")
+    try:
+        yield con
+        con.commit()
+    finally:
+        con.close()
+
+
+def get_setting(con, key: str, default: str = "") -> str:
+    row = con.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def set_setting(con, key: str, value: str) -> None:
+    con.execute("INSERT INTO settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, str(value)))
+
 
 # ---- auth: magpie-pattern gate for tunnel-facing traffic -------------------
 # Auth is ON only when CARCOSTS_PASSWORD is set (env / systemd EnvironmentFile).
@@ -83,6 +107,159 @@ def _is_authed(request) -> bool:
     return bool(cookie) and hmac.compare_digest(cookie, _token())
 
 
+# ---- optional TOTP second factor (checked at /login, before the cookie) ----
+# Off unless you turn it on from the app. It is a second factor on top of the
+# password, so it needs one: with no CARCOSTS_PASSWORD there is nothing to be
+# second to. The session cookie is unchanged — a valid cookie still means "both
+# factors passed" — so 2FA only ever adds a step at login. Secret + backup-code
+# hashes live in the settings table.
+BACKUP_CODE_COUNT = 8
+STAGE_SECONDS = 300   # how long the password step stays good for while you fetch a code
+
+
+def _pyotp():
+    """pyotp/qrcode are imported lazily so an install without them still runs;
+    TOTP simply reports itself unavailable and the rest of the app is untouched."""
+    try:
+        import pyotp
+        return pyotp
+    except ImportError:
+        return None
+
+
+def totp_available() -> bool:
+    """Both halves have to be there: pyotp to verify, qrcode to enrol."""
+    try:
+        import qrcode.image.svg   # noqa: F401
+    except ImportError:
+        return False
+    return _pyotp() is not None
+
+
+def totp_secret() -> str:
+    with db() as con:
+        return get_setting(con, "totp_secret")
+
+
+def totp_is_enabled() -> bool:
+    with db() as con:
+        return get_setting(con, "totp_enabled") == "1" and bool(get_setting(con, "totp_secret"))
+
+
+def new_totp_secret() -> str:
+    """Mint a fresh secret. It is NOT active until a code from the app confirms
+    it, so a mistyped scan can never lock you out."""
+    sec = _pyotp().random_base32()
+    with db() as con:
+        set_setting(con, "totp_secret", sec)
+        set_setting(con, "totp_enabled", "0")
+        set_setting(con, "totp_backup_codes", "[]")
+    return sec
+
+
+def totp_uri(secret: str | None = None) -> str:
+    sec = secret or totp_secret()
+    return _pyotp().TOTP(sec).provisioning_uri(name="Car Costs", issuer_name="Car Costs")
+
+
+def check_totp(code: str) -> bool:
+    sec = totp_secret()
+    code = str(code or "").strip().replace(" ", "")
+    if not sec or not code.isdigit() or not _pyotp():
+        return False
+    return _pyotp().TOTP(sec).verify(code, valid_window=1)   # ±30s clock tolerance
+
+
+def enable_totp(code: str) -> bool:
+    if not check_totp(code):
+        return False
+    with db() as con:
+        set_setting(con, "totp_enabled", "1")
+    return True
+
+
+def disable_totp() -> None:
+    with db() as con:
+        set_setting(con, "totp_enabled", "0")
+        set_setting(con, "totp_secret", "")
+        set_setting(con, "totp_backup_codes", "[]")
+
+
+# Single-use recovery codes, accepted anywhere a 6-digit code is. Stored as
+# HMACs of the server secret; the plaintext is shown once and never again.
+def _hash_backup_code(code: str) -> str:
+    norm = str(code or "").strip().lower().replace("-", "").replace(" ", "")
+    return hmac.new(_secret().encode(), norm.encode(), hashlib.sha256).hexdigest()
+
+
+def generate_backup_codes() -> list[str]:
+    """Mint a fresh set, invalidating any old one, and return the plaintext once."""
+    codes = [pysecrets.token_hex(4) for _ in range(BACKUP_CODE_COUNT)]
+    pretty = [c[:4] + "-" + c[4:] for c in codes]
+    with db() as con:
+        set_setting(con, "totp_backup_codes", json.dumps([_hash_backup_code(c) for c in pretty]))
+    return pretty
+
+
+def _backup_hashes() -> list[str]:
+    with db() as con:
+        try:
+            return json.loads(get_setting(con, "totp_backup_codes", "[]") or "[]")
+        except ValueError:
+            return []
+
+
+def backup_codes_remaining() -> int:
+    return len(_backup_hashes())
+
+
+def consume_backup_code(code: str) -> bool:
+    """Verify and burn a recovery code. A 6-digit TOTP never matches one."""
+    norm = str(code or "").strip().lower().replace("-", "").replace(" ", "")
+    if not norm:
+        return False
+    target = _hash_backup_code(norm)
+    hashes = _backup_hashes()
+    match = next((h for h in hashes if hmac.compare_digest(h, target)), None)
+    if match is None:
+        return False
+    hashes.remove(match)
+    with db() as con:
+        set_setting(con, "totp_backup_codes", json.dumps(hashes))
+    return True
+
+
+def second_factor_ok(code: str) -> bool:
+    return check_totp(code) or consume_backup_code(code)
+
+
+def totp_qr_svg(uri: str) -> str:
+    """Inline SVG QR — pure python, no external request, so it renders inside the
+    app's own page with nothing loaded from off-site."""
+    import io
+
+    import qrcode
+    import qrcode.image.svg
+    buf = io.BytesIO()
+    qrcode.make(uri, image_factory=qrcode.image.svg.SvgPathImage, border=2).save(buf)
+    return buf.getvalue().decode()
+
+
+# The password step hands out a short-lived signed token so step two cannot be
+# reached without it. Signed with the server secret, so it cannot be forged;
+# holding one still means the password was entered within the last few minutes.
+def _stage_token(exp: int) -> str:
+    return hmac.new(_secret().encode(), f"stage:{exp}".encode(), hashlib.sha256).hexdigest()
+
+
+def _stage_ok(token: str, exp: str) -> bool:
+    try:
+        expiry = int(exp)
+    except (TypeError, ValueError):
+        return False
+    return expiry > time.time() and hmac.compare_digest(str(token or ""), _stage_token(expiry))
+
+
 LOGIN_PAGE = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>Car Costs — login</title>
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
@@ -94,10 +271,38 @@ LOGIN_PAGE = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 form{background:rgba(128,128,128,.08);border:1px solid rgba(128,128,128,.25);border-radius:14px;padding:24px;width:min(88vw,320px)}
 h1{font-size:1.1rem;margin:0 0 14px}input,button{width:100%;font:inherit;padding:11px;border-radius:10px;border:1px solid rgba(128,128,128,.35);box-sizing:border-box}
 button{margin-top:12px;background:#2563eb;color:#fff;border:0;font-weight:600;cursor:pointer}
-.err{color:#b3261e;font-size:.85rem;margin-top:8px}</style></head><body>
+.err{color:#b3261e;font-size:.85rem;margin-top:8px}
+.hint{color:#6b7280;font-size:.85rem;margin:10px 0 0}</style></head><body>
 <form method="post" action="/login"><h1>Car Costs</h1>
-<input type="password" name="password" placeholder="Password" autocomplete="current-password" autofocus required>{err}
+{fields}{err}
 <button>Sign in</button></form></body></html>"""
+
+PASSWORD_FIELD = ('<input type="password" name="password" placeholder="Password" '
+                  'autocomplete="current-password" autofocus required>')
+
+CODE_FIELD = ('<input type="text" name="code" placeholder="6-digit code" inputmode="numeric" '
+              'autocomplete="one-time-code" autofocus required>'
+              '<input type="hidden" name="stage" value="{stage}">'
+              '<input type="hidden" name="exp" value="{exp}">'
+              '<p class="hint">From your authenticator app. A recovery code works too.</p>')
+
+
+def _login_html(fields: str, err: str = "") -> str:
+    return LOGIN_PAGE.replace("{fields}", fields).replace(
+        "{err}", f'<div class="err">{err}</div>' if err else "")
+
+
+def _code_step_html(err: str = "") -> str:
+    exp = int(time.time()) + STAGE_SECONDS
+    return _login_html(CODE_FIELD.replace("{stage}", _stage_token(exp)).replace("{exp}", str(exp)), err)
+
+
+def _signed_in_response():
+    from fastapi.responses import RedirectResponse
+    resp = RedirectResponse("/", status_code=302)
+    resp.set_cookie(AUTH_COOKIE, _token(), max_age=SESSION_DAYS * 86400,
+                    httponly=True, secure=True, samesite="none")
+    return resp
 
 
 @app.middleware("http")
@@ -119,35 +324,91 @@ def favicon():
 @app.get("/login")
 def login_page():
     from fastapi.responses import HTMLResponse
-    return HTMLResponse(LOGIN_PAGE.replace("{err}", ""))
+    return HTMLResponse(_login_html(PASSWORD_FIELD))
 
 
 @app.post("/login")
 async def login_submit(request: Request):
-    from fastapi.responses import HTMLResponse, RedirectResponse
+    """Two steps when 2FA is on: password, then a code. The cookie is only set
+    once both have passed, so nothing downstream needs to know about either."""
+    from fastapi.responses import HTMLResponse
     form = await request.form()
+
+    if form.get("stage"):   # step two: the code, carrying the signed password step
+        if not _stage_ok(str(form.get("stage")), str(form.get("exp"))):
+            return HTMLResponse(_login_html(PASSWORD_FIELD, "That took too long. Start again"),
+                                status_code=401)
+        if second_factor_ok(str(form.get("code") or "")):
+            return _signed_in_response()
+        time.sleep(1.5)   # blunt brute-force damper
+        return HTMLResponse(_code_step_html("Wrong code"), status_code=401)
+
     attempt = str(form.get("password") or "")
     if _password() and hmac.compare_digest(attempt, _password()):
-        resp = RedirectResponse("/", status_code=302)
-        resp.set_cookie(AUTH_COOKIE, _token(), max_age=SESSION_DAYS * 86400,
-                        httponly=True, secure=True, samesite="none")
-        return resp
-    time.sleep(1.5)   # blunt brute-force damper
-    return HTMLResponse(LOGIN_PAGE.replace("{err}", '<div class="err">Wrong password</div>'),
-                        status_code=401)
+        if totp_is_enabled():
+            return HTMLResponse(_code_step_html())
+        return _signed_in_response()
+    time.sleep(1.5)
+    return HTMLResponse(_login_html(PASSWORD_FIELD, "Wrong password"), status_code=401)
+
+
+# Enrolment lives behind the same gate as everything else, so a tunnel request
+# needs a session first. Internal callers are exempt here exactly as they are
+# for the rest of the API — on the LAN this app has never held anything back.
+@app.get("/api/totp")
+def totp_status():
+    return {"available": totp_available(), "enabled": totp_is_enabled(),
+            "password_set": _password() is not None,
+            "pending": bool(totp_secret()) and not totp_is_enabled(),
+            "backup_codes_remaining": backup_codes_remaining()}
+
+
+@app.post("/api/totp/setup")
+def totp_setup():
+    """Mint a secret and hand back the QR. Nothing changes about logging in
+    until a code confirms it."""
+    if not totp_available():
+        raise HTTPException(503, "This install is missing pyotp. Add it and restart")
+    if not _password():
+        raise HTTPException(422, "Set CARCOSTS_PASSWORD first. A second factor needs a first one")
+    if totp_is_enabled():
+        raise HTTPException(422, "Already on. Turn it off before setting up again")
+    secret = new_totp_secret()
+    return {"secret": secret, "uri": totp_uri(secret), "qr_svg": totp_qr_svg(totp_uri(secret))}
+
+
+class CodeIn(BaseModel):
+    code: str = ""
+
+
+@app.post("/api/totp/enable")
+def totp_enable(body: CodeIn):
+    if not totp_secret():
+        raise HTTPException(422, "Nothing to confirm. Start the setup first")
+    if not enable_totp(body.code):
+        raise HTTPException(422, "That code did not match. Check the clock on your phone and try again")
+    return {"enabled": True, "backup_codes": generate_backup_codes()}
+
+
+@app.post("/api/totp/disable")
+def totp_disable(body: CodeIn):
+    if not totp_is_enabled():
+        disable_totp()   # clears a half-finished setup
+        return {"enabled": False}
+    if not second_factor_ok(body.code):
+        raise HTTPException(422, "Wrong code")
+    disable_totp()
+    return {"enabled": False}
+
+
+@app.post("/api/totp/backup-codes")
+def totp_new_backup_codes(body: CodeIn):
+    if not totp_is_enabled():
+        raise HTTPException(422, "Two-factor login is off")
+    if not second_factor_ok(body.code):
+        raise HTTPException(422, "Wrong code")
+    return {"backup_codes": generate_backup_codes()}
 # ---------------------------------------------------------------------------
-
-
-@contextmanager
-def db():
-    con = sqlite3.connect(DB_PATH)
-    con.row_factory = sqlite3.Row
-    con.execute("PRAGMA foreign_keys = ON")
-    try:
-        yield con
-        con.commit()
-    finally:
-        con.close()
 
 
 def init_db():
@@ -185,6 +446,10 @@ def init_db():
           created TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_attachments_entry ON attachments(entry_id);
+        CREATE TABLE IF NOT EXISTS settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL DEFAULT ''
+        );
         """)
         have = {r["name"] for r in con.execute("PRAGMA table_info(cars)")}
         for col, typ in (("make", "TEXT DEFAULT ''"), ("model", "TEXT DEFAULT ''"),
@@ -946,3 +1211,33 @@ async def _backup_daily():
 
 
 init_db()
+
+
+def _totp_setup_cli():
+    """Terminal enrolment, for a headless box or if you are locked out of the UI:
+    `python main.py --totp-setup` (same CARCOSTS_DB the app uses)."""
+    import qrcode
+    if not totp_available():
+        raise SystemExit("pyotp is not installed. Run: pip install -r requirements.txt")
+    if totp_is_enabled() and input("Two-factor login is already on. Replace it? [y/N] ").lower() != "y":
+        raise SystemExit("Left alone.")
+    uri = totp_uri(new_totp_secret())
+    qr = qrcode.QRCode(border=1)
+    qr.add_data(uri)
+    qr.print_ascii(invert=True)
+    print(f"\nSecret (if you cannot scan): {totp_secret()}\n{uri}\n")
+    if not enable_totp(input("Enter the 6-digit code to confirm: ")):
+        disable_totp()
+        raise SystemExit("That code did not match. Nothing was turned on. Run it again.")
+    print("\nTwo-factor login is ON. Recovery codes (each works once, keep them safe):\n")
+    for code in generate_backup_codes():
+        print("   " + code)
+
+
+if __name__ == "__main__":
+    import sys
+    if "--totp-setup" in sys.argv:
+        _totp_setup_cli()
+    else:
+        raise SystemExit("Run the app with: uvicorn main:app --host 0.0.0.0 --port 8000\n"
+                         "Or enrol a second factor with: python main.py --totp-setup")

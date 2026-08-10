@@ -142,7 +142,8 @@ cost per year, per km, and what's due next?*
   migration when a car goes electric.
 - **Cars come and go**: add cars in the UI; retiring a replaced car keeps its
   full history in a restorable "Retired" section.
-- **Password gate** — set `CARCOSTS_PASSWORD` on every install (details below);
+- **Password gate** — set `CARCOSTS_PASSWORD` on every install (details below),
+  with an optional second factor from an authenticator app;
   internal monitoring/sensor callers on the LAN stay credential-free. Installable as a home-screen PWA; cars are
   deep-linkable (`#car-1`). Dates day-first. Light/dark. No build step, no
   accounts, no cloud.
@@ -220,6 +221,24 @@ don't run both patterns at once without thinking it through. Sessions are
 iframed in a dashboard); rotating the password invalidates every session.
 `/login` and `/healthz` are always public. Publish the hostname only after
 the password is set.
+
+#### Optional second factor
+
+On top of the password you can add a six digit code from an authenticator app.
+It is off unless you turn it on, and it needs a password to sit on top of.
+
+Open **Security** under the version number on the home screen, scan the QR with
+your authenticator, and confirm one code. The second factor only switches on
+once a code proves the scan worked. You also get eight recovery codes, shown
+once. Each one works once, anywhere a code from the app works. On a headless
+box, or if you cannot reach the UI, `python main.py --totp-setup` does the same
+thing in the terminal (`docker exec -it car-costs python main.py --totp-setup`).
+
+The code is checked at `/login`, before the session cookie is issued. A valid
+cookie still means both factors passed, so nothing else in the app changes. The
+secret and the hashed recovery codes live in your database, so your backups
+already cover them. Lost the phone and the recovery codes? Reach the app from
+your LAN, or clear `CARCOSTS_PASSWORD`, and turn it off again.
 
 ## Home Assistant
 

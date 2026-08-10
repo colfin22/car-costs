@@ -2,3 +2,5 @@ fastapi
 uvicorn[standard]
 pillow
 python-multipart
+pyotp
+qrcode

@@ -96,6 +96,12 @@ docker run -d --name carcosts --restart unless-stopped \
 (Removing and re-running the container never touches your data — it lives in
 the `carcosts-data` volume.)
 
+Want a code from an authenticator app on top of the password? Tap **Security**
+under the version number on the home screen and scan the QR. It is optional and
+off until you set it up. You get eight recovery codes at the end, and each one
+works once. Save them somewhere that is not the phone with the authenticator
+on it.
+
 ## 6. Backups
 
 Everything — cars, entries, photos, documents — is in one folder. Copy it out
