@@ -53,7 +53,7 @@ input, select, textarea { width: 100%; font: inherit; padding: 10px 12px; border
 dialog { border: 1px solid var(--line); border-radius: 16px; background: var(--card);
   color: var(--text); width: min(92vw, 420px); padding: 18px; }
 dialog::backdrop { background: rgba(0,0,0,.45); }
-.dlg-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+.dlg-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 16px; }
 .hint { font-size: .85rem; color: var(--muted); margin-top: 8px; }
 .thumb { width: 52px; height: 52px; border-radius: 10px; object-fit: cover; }
 .thumb.ph { display: inline-flex; align-items: center; justify-content: center;
@@ -98,6 +98,6 @@ button.clip.clip-empty { opacity: .35; }
 </head>
 <body>
 <div id="app"></div>
-<script src="/static/app.js?v=45"></script>
+<script src="/static/app.js?v=46"></script>
 </body>
 </html>

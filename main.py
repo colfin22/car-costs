@@ -34,6 +34,7 @@ MAX_DOC_BYTES = int(os.environ.get("CARCOSTS_MAX_DOC_MB", "10")) * 1024 * 1024
 CATEGORIES = ("fuel", "charge", "insurance", "tax", "nct", "service", "odo", "belt", "tyres", "tyre_check", "check", "repair", "toll", "parking", "misc")
 PERIODIC = ("toll", "parking")   # categories that also accept a monthly total
 TYRE_CORNERS = ("FL", "FR", "RL", "RR")
+BASELINE_NOTE = "Full tread when fitted"   # marks the check a tyre fitting writes for itself
 FUEL_TYPES = ("petrol", "diesel", "hybrid", "phev", "ev")
 
 APP_VERSION = "1.9.0"   # bump on release; shown on the home screen
@@ -862,8 +863,14 @@ def car_detail(car_id: int, year: int | None = None):
                 "years": years}
 
 
-@app.post("/api/cars/{car_id}/entries", status_code=201)
-def add_entry(car_id: int, e: EntryNew):
+def validate_entry(e: EntryNew):
+    """The rules an entry must satisfy, shared by the add and edit paths so an
+    edit can never be validated more loosely than a create.
+
+    Normalises `e` in place (corners into canonical order, tread parsed, fuel
+    price derived) and returns the stored date, the stored cost, and the tread
+    that belongs on a tyre fitting's companion baseline check.
+    """
     if e.category not in CATEGORIES:
         raise HTTPException(422, f"category must be one of {CATEGORIES}")
     d = e.date or date.today().isoformat()
@@ -927,23 +934,67 @@ def add_entry(car_id: int, e: EntryNew):
             raise HTTPException(422, "odometer reading is required for a fuel entry")
     if cost is None:
         raise HTTPException(422, "cost is required (or litres+price / kwh+price for fuel/charge)")
+    return d, cost, baseline_tread
+
+
+def check_odometer(con, car_id: int, d: str, odometer, exclude_id: int = None):
+    """A reading must sit between the ones either side of it in time. On an edit,
+    exclude_id keeps the row being edited out of the comparison — without it an
+    unchanged reading would fail against itself."""
+    if odometer is None:
+        return
+    skip = " AND id != ?" if exclude_id else ""
+    args = (car_id, d) + ((exclude_id,) if exclude_id else ())
+    prev = con.execute(
+        "SELECT odometer, date FROM entries WHERE car_id=? AND odometer IS NOT NULL "
+        "AND date <= ?" + skip + " ORDER BY date DESC, id DESC LIMIT 1", args).fetchone()
+    if prev and odometer < prev["odometer"]:
+        raise HTTPException(422,
+            f"odometer can't go backwards: the reading on {prev['date']} was "
+            f"{prev['odometer']:g} km")
+    nxt = con.execute(
+        "SELECT odometer, date FROM entries WHERE car_id=? AND odometer IS NOT NULL "
+        "AND date > ?" + skip + " ORDER BY date ASC, id ASC LIMIT 1", args).fetchone()
+    if nxt and odometer > nxt["odometer"]:
+        raise HTTPException(422,
+            f"odometer too high for {d}: the reading on {nxt['date']} was "
+            f"{nxt['odometer']:g} km")
+
+
+def due_snapshot(con, car):
+    """The state of everything an entry's date or odometer can move."""
+    cur = current_odo_of(con, car["id"])
+    return {"service": service_due(con, car, cur), "belt": belt_due(con, car, cur),
+            "tyres": tyres_current(con, car["id"]),
+            "tyre_checks": tyre_checks_current(con, car["id"])}
+
+
+ANCHOR_KEYS = {"service": ("last_service", "date", "next_km", "binding"),
+               "belt": ("last_change", "date", "next_km", "binding")}
+
+
+def clock_changes(before: dict, after: dict) -> dict:
+    """Only the clocks whose anchor actually moved. km_left legitimately shifts
+    whenever any odometer changes, so it is deliberately not compared."""
+    out = {}
+    for key, fields in ANCHOR_KEYS.items():
+        b, a = before[key], after[key]
+        if (b is None) != (a is None):
+            out[key] = {"before": b, "after": a}
+        elif b and any(b.get(f) != a.get(f) for f in fields):
+            out[key] = {"before": b, "after": a}
+    for key in ("tyres", "tyre_checks"):
+        if before[key] != after[key]:
+            out[key] = {"before": before[key], "after": after[key]}
+    return out
+
+
+@app.post("/api/cars/{car_id}/entries", status_code=201)
+def add_entry(car_id: int, e: EntryNew):
+    d, cost, baseline_tread = validate_entry(e)
     with db() as con:
         car_or_404(con, car_id)
-        if e.odometer is not None:
-            prev = con.execute(
-                "SELECT odometer, date FROM entries WHERE car_id=? AND odometer IS NOT NULL "
-                "AND date <= ? ORDER BY date DESC, id DESC LIMIT 1", (car_id, d)).fetchone()
-            if prev and e.odometer < prev["odometer"]:
-                raise HTTPException(422,
-                    f"odometer can't go backwards: the reading on {prev['date']} was "
-                    f"{prev['odometer']:g} km")
-            nxt = con.execute(
-                "SELECT odometer, date FROM entries WHERE car_id=? AND odometer IS NOT NULL "
-                "AND date > ? ORDER BY date ASC, id ASC LIMIT 1", (car_id, d)).fetchone()
-            if nxt and e.odometer > nxt["odometer"]:
-                raise HTTPException(422,
-                    f"odometer too high for {d}: the reading on {nxt['date']} was "
-                    f"{nxt['odometer']:g} km")
+        check_odometer(con, car_id, d, e.odometer)
         cur = con.execute(
             "INSERT INTO entries (car_id, date, category, odometer, litres, price_per_litre, "
             "kwh, price_per_kwh, cost, note, corners, tyre_size, tyre_brand, tread_mm, period) "
@@ -959,9 +1010,72 @@ def add_entry(car_id: int, e: EntryNew):
             chk = con.execute(
                 "INSERT INTO entries (car_id, date, category, odometer, cost, note, "
                 "corners, tread_mm) VALUES (?,?,'tyre_check',?,0,?,?,?)",
-                (car_id, d, e.odometer, "Full tread when fitted", e.corners, baseline_tread))
+                (car_id, d, e.odometer, BASELINE_NOTE, e.corners, baseline_tread))
             made["baseline_check_id"] = chk.lastrowid
         return made
+
+
+def baseline_check_of(con, row):
+    """The companion check add_entry wrote for a tyre fitting, if it is still there."""
+    return con.execute(
+        "SELECT * FROM entries WHERE car_id=? AND category='tyre_check' AND date=? "
+        "AND corners=? AND note=? ORDER BY id LIMIT 1",
+        (row["car_id"], row["date"], row["corners"], BASELINE_NOTE)).fetchone()
+
+
+@app.patch("/api/entries/{entry_id}")
+def edit_entry(entry_id: int, e: EntryNew, dry_run: bool = False):
+    """Correct an entry in place. The category is fixed — the required fields
+    differ per category and stale columns would need clearing, so that is left
+    out of this first version.
+
+    Because a date or an odometer can move a due clock, the caller is expected
+    to run this once with dry_run=true, show the caller what would move, and
+    only then save. The preview runs the real write and rolls it back, so what
+    it reports is what saving actually does rather than a second guess at it.
+    """
+    with db() as con:
+        row = con.execute("SELECT * FROM entries WHERE id=?", (entry_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "no such entry")
+        if e.category != row["category"]:
+            raise HTTPException(422,
+                f"an entry's category can't be changed (this one is a {row['category']}) — "
+                "delete it and add it again under the right category")
+        car = car_or_404(con, row["car_id"])
+        d, cost, baseline_tread = validate_entry(e)
+        check_odometer(con, row["car_id"], d, e.odometer, exclude_id=entry_id)
+        before = due_snapshot(con, car)
+        # Found before the write, while it still matches the entry's old date and corners.
+        companion = baseline_check_of(con, row) if row["category"] == "tyres" else None
+        con.execute(
+            "UPDATE entries SET date=?, odometer=?, litres=?, price_per_litre=?, kwh=?, "
+            "price_per_kwh=?, cost=?, note=?, corners=?, tyre_size=?, tyre_brand=?, "
+            "tread_mm=?, period=? WHERE id=?",
+            (d, e.odometer, e.litres, e.price_per_litre, e.kwh, e.price_per_kwh, cost,
+             e.note, e.corners, e.tyre_size, e.tyre_brand, e.tread_mm, e.period, entry_id))
+        if companion:
+            # The baseline is only visible because it shares the fitting's date, so it
+            # has to move with it. A cleared tread means there is no baseline any more.
+            if baseline_tread:
+                con.execute(
+                    "UPDATE entries SET date=?, odometer=?, corners=?, tread_mm=? WHERE id=?",
+                    (d, e.odometer, e.corners, baseline_tread, companion["id"]))
+            else:
+                con.execute("DELETE FROM entries WHERE id=?", (companion["id"],))
+        elif baseline_tread and row["category"] == "tyres":
+            chk = con.execute(
+                "INSERT INTO entries (car_id, date, category, odometer, cost, note, "
+                "corners, tread_mm) VALUES (?,?,'tyre_check',?,0,?,?,?)",
+                (row["car_id"], d, e.odometer, BASELINE_NOTE, e.corners, baseline_tread))
+            companion = con.execute("SELECT * FROM entries WHERE id=?", (chk.lastrowid,)).fetchone()
+        after = due_snapshot(con, car)
+        out = {"entry": dict(con.execute("SELECT * FROM entries WHERE id=?", (entry_id,)).fetchone()),
+               "clock_change": clock_changes(before, after),
+               "dry_run": dry_run}
+        if dry_run:
+            con.rollback()   # db() commits on the way out; this is what keeps a preview a preview
+        return out
 
 
 @app.delete("/api/entries/{entry_id}", status_code=204)

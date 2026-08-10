@@ -296,6 +296,7 @@ async function showCar(id, year) {
       <input type="file" id="doc-scan" accept="image/*" capture="environment" hidden>
       <input type="file" id="doc-file" accept="image/*,application/pdf" hidden>
     </div>`;
+  c._entries = d.entries;   // an edit needs its tyre fitting's companion baseline check
   c._tyrePrefill = (() => {
     const latest = CORNERS.map(k => (d.tyres || {})[k]).filter(Boolean)
       .sort((a, b) => b.date.localeCompare(a.date))[0];
@@ -575,11 +576,13 @@ function entryDetailDialog(car, entry) {
   const dlg = document.createElement("dialog");
   dlg.innerHTML = `<form method="dialog"><h1>${CAT_LABELS[entry.category]} — ${dmy(entry.date)}</h1>
     <dl class="kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>
-    <div class="dlg-actions"><button type="button" id="det-att" class="ghost">📎 Attachments${entry.attachments.length ? " (" + entry.attachments.length + ")" : ""}</button>
+    <div class="dlg-actions"><button type="button" id="det-edit">Edit</button>
+    <button type="button" id="det-att" class="ghost">📎 Attachments${entry.attachments.length ? " (" + entry.attachments.length + ")" : ""}</button>
     <button type="button" class="danger" id="det-del">Delete</button>
     <button class="ghost" value="cancel" formnovalidate>Close</button></div></form>`;
   document.body.append(dlg);
   dlg.addEventListener("close", () => dlg.remove());
+  $("#det-edit", dlg).addEventListener("click", () => { dlg.close("cancel"); entryDialog(car, entry.category, entry); });
   $("#det-att", dlg).addEventListener("click", () => { dlg.close("cancel"); attachmentsDialog(car, entry); });
   $("#det-del", dlg).addEventListener("click", async () => {
     if (!confirm("Delete this entry?" + (entry.attachments.length ? " Its attachments go too." : ""))) return;
@@ -779,7 +782,69 @@ function picked_mm(f, corners) {
     .filter(Boolean).join(",");
 }
 
-function entryDialog(car, cat) {
+function baselineCheckFor(car, entry) {
+  // Mirrors the server's rule: the fitting's companion check shares its date and corners.
+  return (car._entries || []).find(e => e.category === "tyre_check" && e.date === entry.date
+    && e.corners === entry.corners && e.note === "Full tread when fitted");
+}
+
+function prefillEntry(dlg, cat, entry, car) {
+  const form = $("form", dlg);
+  const set = (name, value) => {
+    const el = form.elements[name];
+    if (el && value !== null && value !== undefined) el.value = value;
+  };
+  const drop = name => {
+    const el = form.elements[name];
+    if (!el) return;
+    if (el.previousElementSibling && el.previousElementSibling.tagName === "LABEL")
+      el.previousElementSibling.remove();
+    el.remove();
+  };
+  // A scan belongs to the 📎 dialog, and a renewal date belongs to the car, not the entry.
+  drop("doc");
+  drop("due");
+  if (PERIODIC.includes(cat)) {
+    // The type has to change before the value: a month string assigned to a
+    // date input is rejected and leaves the field blank.
+    form.querySelectorAll("input[name=period]").forEach(r => { r.checked = (r.value === entry.period); });
+    if (entry.period === "month") {
+      $("label", dlg).textContent = "Month";
+      form.elements.date.type = "month";
+    }
+  }
+  set("date", entry.period === "month" ? entry.date.slice(0, 7) : entry.date);
+  for (const k of ["odometer", "litres", "price_per_litre", "kwh", "price_per_kwh", "cost",
+                   "note", "tyre_size", "tyre_brand"])
+    if (entry[k] !== null && entry[k] !== undefined) set(k, entry[k]);
+  if (cat === "odo") set("cost", null);
+  const corners = (entry.corners || "").split(",").filter(Boolean);
+  form.querySelectorAll("input[name=corner]").forEach(b => { b.checked = corners.includes(b.value); });
+  if (cat === "tyre_check")
+    for (const p of (entry.tread_mm || "").split(",").filter(Boolean)) {
+      const [k, v] = p.split("=");
+      set("mm_" + k, v);
+    }
+  if (cat === "tyres") {
+    const base = baselineCheckFor(car, entry);
+    const mm = base ? (base.tread_mm || "").split(",")[0] : "";
+    set("tread_new", mm ? mm.split("=")[1] : "");
+  }
+}
+
+function clockChangeText(changes) {
+  const label = { service: "Next service", belt: "Timing belt",
+                  tyres: "The tyres on record", tyre_checks: "The tread readings on record" };
+  const lines = Object.entries(changes).map(([k, ch]) => {
+    if (k === "tyres" || k === "tyre_checks") return label[k] + " change.";
+    const b = ch.before && ch.before.date ? dmy(ch.before.date) : "nothing";
+    const a = ch.after && ch.after.date ? dmy(ch.after.date) : "nothing";
+    return `${label[k]} moves from ${b} to ${a}.`;
+  });
+  return lines.join("\n") + "\n\nSave anyway?";
+}
+
+function entryDialog(car, cat, entry) {
   const isFuel = cat === "fuel", isCharge = cat === "charge";
   const unitFields = isFuel ? `
       <label>Amount (€)</label><input name="cost" type="number" step="0.01" inputmode="decimal" required>
@@ -847,19 +912,12 @@ function entryDialog(car, cat) {
       <label>Scan receipt / report (optional)</label>
       <input name="doc" type="file" accept="image/*" capture="environment">`;
   const dlg = dialog(`
-    <h1>${CAT_LABELS[cat]} — ${esc(car.name)}</h1>
+    <h1>${entry ? "Edit" : CAT_LABELS[cat]} — ${entry ? CAT_LABELS[cat] : esc(car.name)}</h1>
     <label>Date</label><input name="date" type="date" value="${today()}" required>
     ${unitFields}${docField}`, async d => {
     const f = new FormData($("form", d));
     const doc = scanBlob;   // set at pick time, after the crop step
-    const dueField = { tax: "tax_due", nct: "nct_due", insurance: "insurance_due" }[cat];
-    const hasCost = !!f.get("cost"), hasDue = dueField && !!f.get("due");
-    if (dueField && !hasCost && !hasDue) throw new Error("Enter an amount, a date, or both");
-    if (hasDue)
-      await api(`/api/cars/${car.id}`, { method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [dueField]: f.get("due") }) });
-    if (hasCost || !dueField) {
+    const buildBody = () => {
       const body = { category: cat, date: f.get("date"), note: f.get("note") || "" };
       for (const k of ["odometer", "litres", "price_per_litre", "kwh", "price_per_kwh", "cost"])
         if (f.get(k)) body[k] = parseFloat(f.get(k));
@@ -880,8 +938,30 @@ function entryDialog(car, cat) {
         body.period = "month";
         body.date = f.get("date") + "-01";   // the field is a month picker
       }
+      return body;
+    };
+    if (entry) {
+      // Preview first: a date or an odometer edit can move a due clock, and the
+      // preview is the real write rolled back, so it cannot disagree with the save.
+      const body = JSON.stringify(buildBody());
+      const opts = { method: "PATCH", headers: { "Content-Type": "application/json" }, body };
+      const preview = await api(`/api/entries/${entry.id}?dry_run=true`, opts);
+      if (Object.keys(preview.clock_change).length && !confirm(clockChangeText(preview.clock_change)))
+        return;
+      await api(`/api/entries/${entry.id}`, opts);
+      showCar(car.id);
+      return;
+    }
+    const dueField = { tax: "tax_due", nct: "nct_due", insurance: "insurance_due" }[cat];
+    const hasCost = !!f.get("cost"), hasDue = dueField && !!f.get("due");
+    if (dueField && !hasCost && !hasDue) throw new Error("Enter an amount, a date, or both");
+    if (hasDue)
+      await api(`/api/cars/${car.id}`, { method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [dueField]: f.get("due") }) });
+    if (hasCost || !dueField) {
       const made = await api(`/api/cars/${car.id}/entries`, { method: "POST",
-        headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(buildBody()) });
       if (doc && doc.size)
         await uploadDoc(`/api/entries/${made.id}/attachments`, doc, doc instanceof File ? undefined : "scan.jpg");
     } else if (doc && doc.size)
@@ -889,6 +969,7 @@ function entryDialog(car, cat) {
       await uploadDoc(`/api/cars/${car.id}/attachments`, doc, doc instanceof File ? undefined : "scan.jpg");
     showCar(car.id);
   });
+  if (entry) prefillEntry(dlg, cat, entry, car);
   if (PERIODIC.includes(cat)) {
     // A monthly total belongs to a month, not a day — swap the picker to match.
     const dateInput = $("input[name=date]", dlg), label = $("label", dlg);
