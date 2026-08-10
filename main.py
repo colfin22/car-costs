@@ -21,7 +21,7 @@ from contextlib import contextmanager
 from datetime import date
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from PIL import Image, ImageOps
@@ -1143,6 +1143,141 @@ def doc_path(att) -> str:
     return os.path.join(DOCS_DIR, f"{att['id']}.{DOC_EXT[att['media_type']]}")
 
 
+# ---- scan auto-crop (issue #19) --------------------------------------------
+# Finds the document in a camera photo and flattens it. This runs on the server
+# on purpose: the first attempt did it in the browser with a 9 MB OpenCV build
+# and never once worked on a phone, and a phone is the one machine here we can
+# neither observe nor control. The phone now just uploads its photo.
+#
+# OpenCV is optional. Without it scan_available() is false, the preview endpoint
+# says so, and the app quietly attaches photos as taken — the behaviour before
+# this feature. Same shape as the optional pyotp/qrcode pair above.
+DETECT_PX = 640          # detection runs on a downscale this wide; corners scale back up
+CROP_MAX_PX = 2000       # cap the flattened output — one upload must not eat a 512 MB box
+MIN_DOC_AREA = 0.15      # a quad smaller than this share of the frame is not the document
+MAX_DOC_AREA = 0.99      # a quad this big is the frame itself, not a document in it
+
+
+def _cv2():
+    try:
+        import cv2
+        return cv2
+    except ImportError:
+        return None
+
+
+def scan_available() -> bool:
+    """OpenCV does the detection and the warp; numpy comes with it."""
+    return _cv2() is not None
+
+
+def _order_corners(pts):
+    """Clockwise from the top left, so the warp target matches the source."""
+    import numpy as np
+    pts = np.array(pts, dtype="float32").reshape(4, 2)
+    s, d = pts.sum(axis=1), np.diff(pts, axis=1).ravel()
+    return np.array([pts[np.argmin(s)], pts[np.argmin(d)],
+                     pts[np.argmax(s)], pts[np.argmax(d)]], dtype="float32")
+
+
+def _upright_size(path) -> tuple[int, int]:
+    """The photo's size the right way up, read from the header — nothing decoded."""
+    with Image.open(path) as im:
+        w, h = im.size
+        try:
+            orient = im.getexif().get(274, 1)
+        except Exception:
+            orient = 1
+    return (h, w) if orient in (5, 6, 7, 8) else (w, h)
+
+
+def _load_upright(path, target: int):
+    """Decode at roughly `target` px, the right way up.
+
+    🔴 Order matters: `draft()` only works on an undecoded JPEG, and
+    `exif_transpose()` returns a decoded copy. Drafting *after* transposing is a
+    no-op that silently decodes the whole photo — which is the difference between
+    45 MB and 250 MB of resident memory on a 12 MP phone photo.
+    """
+    im = Image.open(path)
+    im.draft("RGB", (target, target))
+    return ImageOps.exif_transpose(im).convert("RGB")
+
+
+def detect_document(path: str):
+    """The document's four corners in full-image coordinates, or None.
+
+    None is an ordinary answer — a photo of a dashboard has no document in it —
+    and the caller keeps the original photo when it comes back.
+    """
+    cv2 = _cv2()
+    if cv2 is None:
+        return None
+    import numpy as np
+    full_w, full_h = _upright_size(path)
+    if full_w < 50 or full_h < 50:
+        return None
+    small = _load_upright(path, DETECT_PX)
+    small.thumbnail((DETECT_PX, DETECT_PX), Image.LANCZOS)
+    arr = np.asarray(small)
+    grey = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+    grey = cv2.GaussianBlur(grey, (5, 5), 0)
+    edges = cv2.Canny(grey, 60, 180)
+    # Close small gaps in the outline; a receipt edge is rarely one clean line.
+    edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
+    contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    frame = arr.shape[0] * arr.shape[1]
+    best = None
+    for c in sorted(contours, key=cv2.contourArea, reverse=True)[:10]:
+        peri = cv2.arcLength(c, True)
+        quad = cv2.approxPolyDP(c, 0.02 * peri, True)
+        if len(quad) != 4 or not cv2.isContourConvex(quad):
+            continue
+        share = abs(cv2.contourArea(quad)) / frame
+        if MIN_DOC_AREA <= share <= MAX_DOC_AREA:
+            best = quad
+            break                      # contours are area-sorted, so the first fit is the biggest
+    if best is None:
+        return None
+    sx, sy = full_w / arr.shape[1], full_h / arr.shape[0]
+    return [(float(x) * sx, float(y) * sy) for x, y in best.reshape(4, 2)]
+
+
+def crop_document(path: str) -> bytes | None:
+    """The document flattened to a rectangle, as JPEG bytes. None if no document."""
+    cv2 = _cv2()
+    corners = detect_document(path) if cv2 else None
+    if corners is None:
+        return None
+    import numpy as np
+    full_w, full_h = _upright_size(path)
+    # Decode only as much as the capped output actually needs. Detection has already
+    # told us how much of the frame the document fills, so a receipt covering half
+    # the photo needs twice CROP_MAX_PX decoded and no more. On a 512 MB box the
+    # decode peak is the binding constraint, and a full 12 MP decode is most of it.
+    xs = [p[0] for p in corners]
+    ys = [p[1] for p in corners]
+    doc_edge = max(max(xs) - min(xs), max(ys) - min(ys)) or 1
+    im = _load_upright(path, int(CROP_MAX_PX * max(full_w, full_h) / doc_edge))
+    src = np.asarray(im)
+    shrink = im.size[0] / full_w if full_w else 1.0
+    if shrink != 1.0:
+        corners = [(x * shrink, y * shrink) for x, y in corners]
+    quad = _order_corners(corners)
+    tl, tr, br, bl = quad
+    w = max(np.hypot(*(tr - tl)), np.hypot(*(br - bl)))
+    h = max(np.hypot(*(bl - tl)), np.hypot(*(br - tr)))
+    if w < 40 or h < 40:
+        return None
+    scale = min(1.0, CROP_MAX_PX / max(w, h))
+    w, h = int(round(w * scale)), int(round(h * scale))
+    dst = np.array([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]], dtype="float32")
+    warped = cv2.warpPerspective(src, cv2.getPerspectiveTransform(quad, dst), (w, h))
+    ok, buf = cv2.imencode(".jpg", cv2.cvtColor(warped, cv2.COLOR_RGB2BGR),
+                           [int(cv2.IMWRITE_JPEG_QUALITY), 92])
+    return buf.tobytes() if ok else None
+
+
 async def _receive_doc(file: UploadFile) -> tuple[str, str, int]:
     """Stream the upload to a temp file (capped), sniff its real type.
     Returns (tmp_path, media_type, size); raises 422/413 on bad input."""
@@ -1187,6 +1322,30 @@ def _store_doc(con, car_id: int, entry_id: int | None, file: UploadFile,
     att = dict(con.execute("SELECT * FROM attachments WHERE id=?", (cur.lastrowid,)).fetchone())
     os.replace(tmp, doc_path(att))
     return att
+
+
+@app.post("/api/scan/preview")
+async def scan_preview(file: UploadFile):
+    """Crop a camera photo to the document in it and hand it straight back.
+
+    Stores nothing — the caller decides between this and the original photo and
+    uploads whichever it wants kept, so a bad detection is never destructive.
+    Goes through _receive_doc so the size cap and the real-type sniff apply here
+    exactly as they do on the storing path.
+    """
+    tmp, media, size = await _receive_doc(file)
+    try:
+        if not scan_available():
+            return {"cropped": False, "reason": "unavailable"}
+        if media == "application/pdf":
+            return {"cropped": False, "reason": "not an image"}
+        crop = crop_document(tmp)
+        if crop is None:
+            return {"cropped": False, "reason": "no document found"}
+        return Response(content=crop, media_type="image/jpeg")
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
 
 
 @app.post("/api/entries/{entry_id}/attachments", status_code=201)
@@ -1277,7 +1436,8 @@ def healthz():
         con.execute("SELECT 1")
     # password_set feeds the UI's running-open warning; harmless to expose —
     # an instance without a password answers every API call anyway.
-    return {"ok": True, "version": APP_VERSION, "password_set": _password() is not None}
+    return {"ok": True, "version": APP_VERSION, "password_set": _password() is not None,
+            "scan_available": scan_available()}
 
 
 @app.get("/")

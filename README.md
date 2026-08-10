@@ -60,10 +60,11 @@ cost per year, per km, and what's due next?*
 - Document attachments: hang receipts, invoices, certs and test reports (PDF or
   photos, 10 MB each) on any entry via the 📎 on its row, or in the car's
   Documents section for paperwork with no cost attached. Scanning opens the
-  camera directly, auto-detects the document's outline (jscanify/OpenCV,
-  self-hosted and loaded only on first scan) and perspective-corrects the crop
-  — with draggable corners for when detection misses, and a plain file picker
-  alongside for PDFs and existing photos.
+  camera directly, and the server finds the document in the photo and flattens
+  it — you see the crop next to the photo as taken and pick which to keep. A
+  plain file picker sits alongside for PDFs and existing photos, which are
+  stored untouched. The crop needs `opencv-python-headless`; without it scans
+  simply attach as taken.
 
 **A status page per car**
 - Tap-to-upload photo (resized server-side, shown in a consistent 4:3 frame
