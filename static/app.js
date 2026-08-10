@@ -351,7 +351,8 @@ async function showCar(id, year) {
     $(inp).addEventListener("change", async ev => {
       const file = ev.target.files[0];
       if (!file) return;
-      const doc = inp === "#doc-scan" ? await scanCrop(file) : file;
+      const doc = inp === "#doc-scan" ? await scanCrop(file, ev.target) : file;
+      if (doc === SCAN_RETAKE) return;   // scanCrop already reopened the camera
       if (!doc) { ev.target.value = ""; return; }
       try { await uploadDoc(`/api/cars/${id}/attachments`, doc, doc === file ? undefined : "scan.jpg"); showCar(id); }
       catch (e) { alert(e.message); }
@@ -370,9 +371,16 @@ async function uploadDoc(path, file, name) {
    the browser with a 9 MB OpenCV build and never once worked on a phone, which
    is the whole reason it moved. Picker-chosen files skip all of this.
 
-   Returns a cropped JPEG Blob, the original file, or null (cancelled). Anything
-   that goes wrong returns the original — a scan is never lost to this step. */
-async function scanCrop(file) {
+   Returns a cropped JPEG Blob, the original file, SCAN_RETAKE (#36, take the
+   photo again) or null (cancelled). Anything that goes wrong returns the
+   original — a scan is never lost to this step.
+
+   The dialog also opens when the server found nothing to crop, so that a bad
+   photo can be taken again instead of attaching silently. Nothing to crop is
+   not a failure though — a car part, a paint defect or crash damage is a whole
+   photo by design, so that path keeps "Attach as taken" as the main action. */
+const SCAN_RETAKE = Symbol("retake");
+async function scanCrop(file, input) {
   let crop = null;
   try {
     const fd = new FormData();
@@ -381,30 +389,38 @@ async function scanCrop(file) {
     if (!r.ok) return file;
     if ((r.headers.get("content-type") || "").startsWith("image/")) crop = await r.blob();
   } catch (e) { return file; }
-  if (!crop) return file;          // no document found, or the server has no scanner
 
-  const cropUrl = URL.createObjectURL(crop), fullUrl = URL.createObjectURL(file);
+  const cropUrl = crop ? URL.createObjectURL(crop) : null, fullUrl = URL.createObjectURL(file);
   return new Promise(resolve => {
     const dlg = document.createElement("dialog");
     dlg.className = "scan-dlg";
     dlg.innerHTML = `<h1>Crop scan</h1>
-      <p class="hint" style="margin:0 0 8px">Cropped to the document. Keep it, or attach the photo as taken.</p>
+      <p class="hint" style="margin:0 0 8px">${crop
+        ? "Cropped to the document. Keep it, or attach the photo as taken."
+        : "Nothing to crop here, so the whole photo goes up. Take it again if it did not come out."}</p>
       <div class="scan-pair">
-        <figure><img src="${cropUrl}" alt="Cropped scan"><figcaption>Cropped</figcaption></figure>
+        ${crop ? `<figure><img src="${cropUrl}" alt="Cropped scan"><figcaption>Cropped</figcaption></figure>` : ""}
         <figure><img src="${fullUrl}" alt="Photo as taken"><figcaption>As taken</figcaption></figure>
       </div>
-      <div class="dlg-actions"><button type="button" class="ghost" id="sc-cancel">Cancel</button>
-      <button type="button" class="ghost" id="sc-full">Full photo</button>
-      <button type="button" id="sc-crop">Use crop</button></div>`;
+      <div class="dlg-actions"><button type="button" class="ghost" id="sc-retake">Retake</button>
+      <button type="button" class="ghost" id="sc-full">${crop ? "Full photo" : "Attach as taken"}</button>
+      ${crop ? `<button type="button" id="sc-crop">Use crop</button>` : ""}</div>`;
     document.body.append(dlg);
     const finish = val => {
-      URL.revokeObjectURL(cropUrl); URL.revokeObjectURL(fullUrl);
+      if (cropUrl) URL.revokeObjectURL(cropUrl);
+      URL.revokeObjectURL(fullUrl);
       dlg.close(); dlg.remove(); resolve(val);
     };
-    $("#sc-cancel", dlg).addEventListener("click", () => finish(null));
+    $("#sc-retake", dlg).addEventListener("click", () => {
+      // Reopen from inside the click itself — a mobile browser refuses a file
+      // input opened any later. Clearing the value first is what lets the same
+      // photo fire `change` a second time.
+      if (input) { input.value = ""; input.click(); }
+      finish(SCAN_RETAKE);
+    });
     $("#sc-full", dlg).addEventListener("click", () => finish(file));
-    $("#sc-crop", dlg).addEventListener("click", () => finish(crop));
-    dlg.addEventListener("cancel", ev => { ev.preventDefault(); finish(null); });
+    if (crop) $("#sc-crop", dlg).addEventListener("click", () => finish(crop));
+    dlg.addEventListener("cancel", ev => { ev.preventDefault(); finish(null); });   // Esc abandons the scan
     dlg.showModal();
   });
 }
@@ -542,7 +558,8 @@ function attachmentsDialog(car, entry) {
     inp.addEventListener("change", async ev => {
       const file = ev.target.files[0];
       if (!file) return;
-      const doc = inp.classList.contains("att-scan") ? await scanCrop(file) : file;
+      const doc = inp.classList.contains("att-scan") ? await scanCrop(file, ev.target) : file;
+      if (doc === SCAN_RETAKE) return;   // scanCrop already reopened the camera
       if (!doc) { ev.target.value = ""; return; }
       try { await uploadDoc(`/api/entries/${entry.id}/attachments`, doc, doc === file ? undefined : "scan.jpg"); }
       catch (e) { alert(e.message); return; }
@@ -906,7 +923,10 @@ function entryDialog(car, cat, entry) {
   if (docInput) docInput.addEventListener("change", async ev => {
     const file = ev.target.files[0];
     if (!file) { scanBlob = null; return; }
-    scanBlob = await scanCrop(file);
+    const doc = await scanCrop(file, ev.target);
+    // A retake replaces the held photo rather than adding a second one.
+    if (doc === SCAN_RETAKE) { scanBlob = null; return; }
+    scanBlob = doc;
     if (!scanBlob) ev.target.value = "";
   });
   if (isFuel || isCharge) {

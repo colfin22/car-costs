@@ -67,9 +67,11 @@ cost per year, per km, and what's due next?*
 - Scan a receipt and it comes out flat. Scanning opens the camera directly, the
   server finds the document in the photo and flattens it, and you see the crop
   beside the photo as taken and choose which to keep. Nothing is stored until
-  you pick, so a detection that gets it wrong costs you a tap. If no document is
-  found, or the optional scanning dependency is not installed, the photo simply
-  attaches as taken. Detection runs on the server rather than in the browser
+  you pick, so a detection that gets it wrong costs you a tap. If the photo
+  itself did not come out, Retake reopens the camera on the spot rather than
+  making you start the scan again. If no document is found, or the optional
+  scanning dependency is not installed, you are offered the photo as taken or
+  another go at it. Detection runs on the server rather than in the browser
   precisely so that it does not depend on what phone you happen to be holding.
 
 **A status page per car**
