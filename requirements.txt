@@ -4,3 +4,4 @@ pillow
 python-multipart
 pyotp
 qrcode
+opencv-python-headless

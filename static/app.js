@@ -365,125 +365,45 @@ async function uploadDoc(path, file, name) {
 }
 
 /* ---------- scan cropping (#19) ----------
-   Camera scans run through a crop step: jscanify (OpenCV.js) detects the
-   document outline, the user can drag the corners, and the crop is
-   perspective-corrected before upload. Libraries are self-hosted under
-   /static/scanlib/ and lazy-loaded on first scan (~9 MB, then cached).
-   Picker-chosen files skip all of this. */
-let scanLibs = null;
-function loadScanLibs() {
-  if (!scanLibs) scanLibs = (async () => {
-    const load = src => new Promise((res, rej) => {
-      const s = document.createElement("script");
-      s.src = src; s.onload = res; s.onerror = () => rej(new Error("could not load " + src));
-      document.head.append(s);
-    });
-    await load("/static/scanlib/opencv.js");
-    for (let i = 0; i < 200 && !(window.cv && cv.Mat); i++)   // wait for wasm/asm init
-      await new Promise(r => setTimeout(r, 50));
-    if (!(window.cv && cv.Mat)) throw new Error("scanner failed to initialise");
-    await load("/static/scanlib/jscanify.js");
-  })().catch(e => { scanLibs = null; throw e; });
-  return scanLibs;
-}
+   The server finds the document in a camera photo and flattens it; this side
+   just asks and shows the answer. The first attempt did the detection here in
+   the browser with a 9 MB OpenCV build and never once worked on a phone, which
+   is the whole reason it moved. Picker-chosen files skip all of this.
 
-// PARKED (#19): crop works in desktop testing but not on-phone; disabled until
-// that's understood. Scans attach as taken.
-const SCAN_CROP_ENABLED = false;
-
-// Returns a cropped JPEG Blob, the original file ("Full photo"), or null (cancelled).
+   Returns a cropped JPEG Blob, the original file, or null (cancelled). Anything
+   that goes wrong returns the original — a scan is never lost to this step. */
 async function scanCrop(file) {
-  if (!SCAN_CROP_ENABLED) return file;
-  let scanner;
-  try { await loadScanLibs(); scanner = new jscanify(); }
-  catch (e) { alert(e.message + " — attaching the full photo instead."); return file; }
-  const url = URL.createObjectURL(file);
-  const img = await new Promise((res, rej) => {
-    const i = new Image();
-    i.onload = () => res(i); i.onerror = () => rej(new Error("could not read image"));
-    i.src = url;
-  }).catch(() => null);
-  if (!img) { URL.revokeObjectURL(url); return file; }
-
-  // full-res source canvas (what we extract from) + downscaled preview (what we show)
-  const full = document.createElement("canvas");
-  full.width = img.naturalWidth; full.height = img.naturalHeight;
-  full.getContext("2d").drawImage(img, 0, 0);
-  const scale = Math.min(1, 640 / img.naturalWidth, 640 / img.naturalHeight);
-  const pw = Math.round(img.naturalWidth * scale), ph = Math.round(img.naturalHeight * scale);
-
-  // detect on the preview size (fast); corners live in preview coordinates
-  const det = document.createElement("canvas");
-  det.width = pw; det.height = ph;
-  det.getContext("2d").drawImage(img, 0, 0, pw, ph);
-  let corners = null;
+  let crop = null;
   try {
-    const contour = scanner.findPaperContour(cv.imread(det));
-    if (contour) {
-      const c = scanner.getCornerPoints(contour);
-      if (c.topLeftCorner && c.topRightCorner && c.bottomLeftCorner && c.bottomRightCorner)
-        corners = [c.topLeftCorner, c.topRightCorner, c.bottomRightCorner, c.bottomLeftCorner];
-    }
-  } catch (e) { /* detection is best-effort; fall through to edge corners */ }
-  if (!corners) {
-    const m = Math.round(Math.min(pw, ph) * 0.05);
-    corners = [{ x: m, y: m }, { x: pw - m, y: m }, { x: pw - m, y: ph - m }, { x: m, y: ph - m }];
-  }
+    const fd = new FormData();
+    fd.append("file", file, file.name || "scan.jpg");
+    const r = await fetch("/api/scan/preview", { method: "POST", body: fd });
+    if (!r.ok) return file;
+    if ((r.headers.get("content-type") || "").startsWith("image/")) crop = await r.blob();
+  } catch (e) { return file; }
+  if (!crop) return file;          // no document found, or the server has no scanner
 
-  URL.revokeObjectURL(url);
+  const cropUrl = URL.createObjectURL(crop), fullUrl = URL.createObjectURL(file);
   return new Promise(resolve => {
     const dlg = document.createElement("dialog");
     dlg.className = "scan-dlg";
     dlg.innerHTML = `<h1>Crop scan</h1>
-      <p class="hint" style="margin:0 0 8px">Drag the corners onto the document.</p>
-      <div class="scan-wrap"><canvas width="${pw}" height="${ph}"></canvas></div>
+      <p class="hint" style="margin:0 0 8px">Cropped to the document. Keep it, or attach the photo as taken.</p>
+      <div class="scan-pair">
+        <figure><img src="${cropUrl}" alt="Cropped scan"><figcaption>Cropped</figcaption></figure>
+        <figure><img src="${fullUrl}" alt="Photo as taken"><figcaption>As taken</figcaption></figure>
+      </div>
       <div class="dlg-actions"><button type="button" class="ghost" id="sc-cancel">Cancel</button>
       <button type="button" class="ghost" id="sc-full">Full photo</button>
       <button type="button" id="sc-crop">Use crop</button></div>`;
     document.body.append(dlg);
-    const cnv = $("canvas", dlg), ctx = cnv.getContext("2d");
-    const draw = () => {
-      ctx.drawImage(img, 0, 0, pw, ph);
-      ctx.strokeStyle = "#2563eb"; ctx.lineWidth = 2;
-      ctx.beginPath();
-      corners.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
-      ctx.closePath(); ctx.stroke();
-      ctx.fillStyle = "#2563eb";
-      for (const p of corners) { ctx.beginPath(); ctx.arc(p.x, p.y, 9, 0, 7); ctx.fill(); }
+    const finish = val => {
+      URL.revokeObjectURL(cropUrl); URL.revokeObjectURL(fullUrl);
+      dlg.close(); dlg.remove(); resolve(val);
     };
-    draw();
-    let held = null;
-    const toCanvas = ev => {
-      const r = cnv.getBoundingClientRect();
-      return { x: (ev.clientX - r.left) * (pw / r.width), y: (ev.clientY - r.top) * (ph / r.height) };
-    };
-    cnv.addEventListener("pointerdown", ev => {
-      const p = toCanvas(ev);
-      let best = null, bestD = 40 * (pw / cnv.getBoundingClientRect().width);
-      corners.forEach(c => { const d = Math.hypot(c.x - p.x, c.y - p.y); if (d < bestD) { best = c; bestD = d; } });
-      if (best) { held = best; cnv.setPointerCapture(ev.pointerId); ev.preventDefault(); }
-    });
-    cnv.addEventListener("pointermove", ev => {
-      if (!held) return;
-      const p = toCanvas(ev);
-      held.x = Math.min(pw, Math.max(0, p.x)); held.y = Math.min(ph, Math.max(0, p.y));
-      draw();
-    });
-    cnv.addEventListener("pointerup", () => held = null);
-    const finish = val => { dlg.close(); dlg.remove(); resolve(val); };
     $("#sc-cancel", dlg).addEventListener("click", () => finish(null));
     $("#sc-full", dlg).addEventListener("click", () => finish(file));
-    $("#sc-crop", dlg).addEventListener("click", () => {
-      const f = corners.map(p => ({ x: p.x / scale, y: p.y / scale }));   // back to full-res
-      const [tl, tr, br, bl] = f;
-      const w = Math.round(Math.max(Math.hypot(tr.x - tl.x, tr.y - tl.y), Math.hypot(br.x - bl.x, br.y - bl.y)));
-      const h = Math.round(Math.max(Math.hypot(bl.x - tl.x, bl.y - tl.y), Math.hypot(br.x - tr.x, br.y - tr.y)));
-      try {
-        const out = scanner.extractPaper(full, w, h, {
-          topLeftCorner: tl, topRightCorner: tr, bottomRightCorner: br, bottomLeftCorner: bl });
-        out.toBlob(b => finish(b || file), "image/jpeg", 0.92);
-      } catch (e) { alert("Crop failed — attaching the full photo."); finish(file); }
-    });
+    $("#sc-crop", dlg).addEventListener("click", () => finish(crop));
     dlg.addEventListener("cancel", ev => { ev.preventDefault(); finish(null); });
     dlg.showModal();
   });
