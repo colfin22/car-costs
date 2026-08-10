@@ -56,15 +56,21 @@ cost per year, per km, and what's due next?*
   between its neighbours in date order).
 - **Tap any entry to see what you logged** — the lists show a one-line
   summary; tapping opens the full record: every field captured for that entry,
-  its attachments, and a delete.
+  its attachments, an edit and a delete. Editing an entry warns you first if the
+  change would move a service or belt due date, showing the old date and the new
+  one, because a date or an odometer correction can quietly shift a clock.
 - Document attachments: hang receipts, invoices, certs and test reports (PDF or
   photos, 10 MB each) on any entry via the 📎 on its row, or in the car's
-  Documents section for paperwork with no cost attached. Scanning opens the
-  camera directly, and the server finds the document in the photo and flattens
-  it — you see the crop next to the photo as taken and pick which to keep. A
-  plain file picker sits alongside for PDFs and existing photos, which are
-  stored untouched. The crop needs `opencv-python-headless`; without it scans
-  simply attach as taken.
+  Documents section for paperwork with no cost attached. A plain file picker
+  sits alongside for PDFs and existing photos, which are stored exactly as
+  received.
+- Scan a receipt and it comes out flat. Scanning opens the camera directly, the
+  server finds the document in the photo and flattens it, and you see the crop
+  beside the photo as taken and choose which to keep. Nothing is stored until
+  you pick, so a detection that gets it wrong costs you a tap. If no document is
+  found, or the optional scanning dependency is not installed, the photo simply
+  attaches as taken. Detection runs on the server rather than in the browser
+  precisely so that it does not depend on what phone you happen to be holding.
 
 **A status page per car**
 - Tap-to-upload photo (resized server-side, shown in a consistent 4:3 frame
@@ -152,7 +158,7 @@ cost per year, per km, and what's due next?*
 ## Stack
 
 FastAPI + SQLite (stdlib `sqlite3`, no ORM) + one vanilla-JS page. The database
-and photos live in `data/` (gitignored). ~1,900 lines all-in.
+and photos live in `data/` (gitignored). ~2,600 lines all-in.
 
 The app writes a daily snapshot of the database to `data/backups/` (keeps the
 last 7, `CARCOSTS_BACKUP_KEEP` to change) using SQLite's `VACUUM INTO` — a
@@ -167,6 +173,17 @@ newest file in `data/backups/`. Photos and document attachments (`data/photos/`,
 python3 -m venv venv
 venv/bin/pip install fastapi "uvicorn[standard]" pillow python-multipart
 venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+Two features are optional and the app runs fine without either. Scan cropping
+needs `opencv-python-headless`, which is a large install of roughly 250 MB once
+unpacked, so it is worth skipping on a small box if you do not want it. The
+second factor at login needs `pyotp` and `qrcode`, which are tiny. Both report
+themselves on `/healthz`, and the app hides what it cannot do.
+
+```bash
+venv/bin/pip install opencv-python-headless   # scan cropping
+venv/bin/pip install pyotp qrcode             # optional second factor
 ```
 
 One placeholder car is seeded on first run — rename it via **Edit**, and add
@@ -184,6 +201,11 @@ docker run -d -p 8000:8000 -v carcosts-data:/srv/data ghcr.io/colfin22/car-costs
 
 The same images are also on Docker Hub as
 [`colfin22/car-costs`](https://hub.docker.com/r/colfin22/car-costs).
+
+The published images include everything, scan cropping included, which is what
+makes them a few hundred MB rather than tens. If you would rather have a small
+image, drop `opencv-python-headless` from `requirements.txt` and build your own.
+Everything except the scan crop works without it.
 
 Or use the included [docker-compose.yml](docker-compose.yml)
 (`docker compose up -d`), which also shows the environment variables. The
@@ -270,7 +292,11 @@ is the nicer phone experience.
 `PATCH /api/cars/{id}` (details, due dates, service/belt intervals,
 `ev_enabled`, `archived`; an explicit `null` clears a nullable field) ·
 `GET /api/cars/{id}?year=` (includes `next_due`, `service_due`, `belt_due`,
-`service_log`, `tyre_history`) · `POST /api/cars/{id}/entries` · `DELETE /api/entries/{id}` ·
+`service_log`, `tyre_history`) · `POST /api/cars/{id}/entries` ·
+`PATCH /api/entries/{id}[?dry_run=true]` (correct an entry; the dry run reports
+which due dates the change would move, without saving) ·
+`DELETE /api/entries/{id}` · `POST /api/scan/preview` (crop a photo to the
+document in it and hand it straight back, storing nothing) ·
 `POST /api/cars/{id}/photo` · `GET /api/dues` ·
 `GET /api/summary[?year=&include_archived=]` (all cars + dues in one payload,
 for driving several Home Assistant sensors from a single poll) · `GET /healthz`
