@@ -37,7 +37,7 @@ TYRE_CORNERS = ("FL", "FR", "RL", "RR")
 BASELINE_NOTE = "Full tread when fitted"   # marks the check a tyre fitting writes for itself
 FUEL_TYPES = ("petrol", "diesel", "hybrid", "phev", "ev")
 
-APP_VERSION = "1.12.0"   # bump on release; shown on the home screen
+APP_VERSION = "1.13.0"   # bump on release; shown on the home screen
 
 app = FastAPI(title="Car Costs", version=APP_VERSION)
 

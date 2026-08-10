@@ -289,11 +289,13 @@ async function showCar(id, year) {
       ${(d.attachments || []).map(a => `
         <div class="entry"><span class="doc-open" data-open="${a.id}">${esc(a.filename)} <span class="muted">${dmy(a.created)}</span></span>
         <button class="danger" data-adel="${a.id}">✕</button></div>`).join("") ||
-        '<div class="muted">No documents yet — certs, receipts and reports live here.</div>'}
+        '<div class="muted">No documents yet — certs, receipts and reports live here, and so do photos of the car.</div>'}
       <div class="row" style="gap:10px;margin-top:8px">
-        <button class="ghost" id="scan-doc" style="flex:1">📷 Scan…</button>
-        <button class="ghost" id="add-doc" style="flex:1">+ Attach file…</button></div>
+        <button class="ghost" id="scan-doc" style="flex:1">📄 Scan</button>
+        <button class="ghost" id="photo-doc" style="flex:1">📷 Pic</button>
+        <button class="ghost" id="add-doc" style="flex:1">+ File</button></div>
       <input type="file" id="doc-scan" accept="image/*" capture="environment" hidden>
+      <input type="file" id="doc-photo" accept="image/*" capture="environment" hidden>
       <input type="file" id="doc-file" accept="image/*,application/pdf" hidden>
     </div>`;
   c._entries = d.entries;   // an edit needs its tyre fitting's companion baseline check
@@ -345,9 +347,12 @@ async function showCar(id, year) {
     b.addEventListener("click", async () => {
       if (confirm("Delete this document?")) { await api(`/api/attachments/${b.dataset.adel}`, { method: "DELETE" }); showCar(id); }
     }));
+  // Scan runs the crop step; Photo is the same camera with none of it, because a
+  // wheel or a paint defect is a whole photo and has no document to find in it.
   $("#scan-doc").addEventListener("click", () => $("#doc-scan").click());
+  $("#photo-doc").addEventListener("click", () => $("#doc-photo").click());
   $("#add-doc").addEventListener("click", () => $("#doc-file").click());
-  for (const inp of ["#doc-scan", "#doc-file"])
+  for (const inp of ["#doc-scan", "#doc-photo", "#doc-file"])
     $(inp).addEventListener("change", async ev => {
       const file = ev.target.files[0];
       if (!file) return;
@@ -388,13 +393,16 @@ async function scanCrop(file, input) {
     const r = await fetch("/api/scan/preview", { method: "POST", body: fd });
     if (!r.ok) return file;
     if ((r.headers.get("content-type") || "").startsWith("image/")) crop = await r.blob();
+    // Only "no document found" is worth asking about. An instance without the
+    // scanning dependency would otherwise pop this dialog on every single scan.
+    else if ((await r.json()).reason !== "no document found") return file;
   } catch (e) { return file; }
 
   const cropUrl = crop ? URL.createObjectURL(crop) : null, fullUrl = URL.createObjectURL(file);
   return new Promise(resolve => {
     const dlg = document.createElement("dialog");
     dlg.className = "scan-dlg";
-    dlg.innerHTML = `<h1>Crop scan</h1>
+    dlg.innerHTML = `<h1>${crop ? "Crop scan" : "Scan"}</h1>
       <p class="hint" style="margin:0 0 8px">${crop
         ? "Cropped to the document. Keep it, or attach the photo as taken."
         : "Nothing to crop here, so the whole photo goes up. Take it again if it did not come out."}</p>
@@ -403,7 +411,7 @@ async function scanCrop(file, input) {
         <figure><img src="${fullUrl}" alt="Photo as taken"><figcaption>As taken</figcaption></figure>
       </div>
       <div class="dlg-actions"><button type="button" class="ghost" id="sc-retake">Retake</button>
-      <button type="button" class="ghost" id="sc-full">${crop ? "Full photo" : "Attach as taken"}</button>
+      <button type="button" ${crop ? `class="ghost"` : ""} id="sc-full">${crop ? "Full photo" : "Attach as taken"}</button>
       ${crop ? `<button type="button" id="sc-crop">Use crop</button>` : ""}</div>`;
     document.body.append(dlg);
     const finish = val => {
@@ -537,8 +545,10 @@ function attachmentsDialog(car, entry) {
       <button type="button" class="danger" data-adel="${a.id}">✕</button></div>`).join("") ||
       '<div class="muted">Nothing attached yet.</div>'}
     <input type="file" class="att-scan" accept="image/*" capture="environment" hidden>
+    <input type="file" class="att-photo" accept="image/*" capture="environment" hidden>
     <input type="file" class="att-file" accept="image/*,application/pdf" hidden>
-    <div class="dlg-actions"><button type="button" id="att-scan">📷 Scan…</button>
+    <div class="dlg-actions"><button type="button" id="att-scan">📄 Scan doc</button>
+    <button type="button" class="ghost" id="att-photo">📷 Photo</button>
     <button type="button" class="ghost" id="att-add">Attach file…</button>
     <button class="ghost" value="cancel" formnovalidate>Close</button></div></form>`;
   document.body.append(dlg);
@@ -553,6 +563,7 @@ function attachmentsDialog(car, entry) {
       dlg.close("cancel"); showCar(car.id);
     }));
   $("#att-scan", dlg).addEventListener("click", () => $(".att-scan", dlg).click());
+  $("#att-photo", dlg).addEventListener("click", () => $(".att-photo", dlg).click());
   $("#att-add", dlg).addEventListener("click", () => $(".att-file", dlg).click());
   dlg.querySelectorAll("input[type=file]").forEach(inp =>
     inp.addEventListener("change", async ev => {
@@ -741,7 +752,8 @@ function prefillEntry(dlg, cat, entry, car) {
     el.remove();
   };
   // A scan belongs to the 📎 dialog, and a renewal date belongs to the car, not the entry.
-  drop("doc");
+  const picker = dlg.querySelector("#doc-pick");   // label, both cameras and the status line
+  if (picker) picker.remove();
   drop("due");
   if (PERIODIC.includes(cat)) {
     // The type has to change before the value: a month string assigned to a
@@ -848,8 +860,16 @@ function entryDialog(car, cat, entry) {
        <label>Note</label><input name="note" placeholder="optional">`;
   let scanBlob = null;
   const docField = cat === "odo" ? "" : `
-      <label>Scan receipt / report (optional)</label>
-      <input name="doc" type="file" accept="image/*" capture="environment">`;
+      <div id="doc-pick">
+        <label>Receipt, report or photo (optional)</label>
+        <div class="row" style="gap:10px">
+          <button type="button" class="ghost" id="ent-scan" style="flex:1">📄 Scan doc</button>
+          <button type="button" class="ghost" id="ent-photo" style="flex:1">📷 Photo</button>
+        </div>
+        <div class="hint" id="ent-doc-status"></div>
+        <input type="file" class="ent-scan" accept="image/*" capture="environment" hidden>
+        <input type="file" class="ent-photo" accept="image/*" capture="environment" hidden>
+      </div>`;
   const dlg = dialog(`
     <h1>${entry ? "Edit" : CAT_LABELS[cat]} — ${entry ? CAT_LABELS[cat] : esc(car.name)}</h1>
     <label>Date</label><input name="date" type="date" value="${today()}" required>
@@ -919,16 +939,29 @@ function entryDialog(car, cat, entry) {
       dateInput.value = monthly ? today().slice(0, 7) : today();
     }));
   }
-  const docInput = $("input[name=doc]", dlg);
-  if (docInput) docInput.addEventListener("change", async ev => {
-    const file = ev.target.files[0];
-    if (!file) { scanBlob = null; return; }
-    const doc = await scanCrop(file, ev.target);
-    // A retake replaces the held photo rather than adding a second one.
-    if (doc === SCAN_RETAKE) { scanBlob = null; return; }
-    scanBlob = doc;
-    if (!scanBlob) ev.target.value = "";
-  });
+  // Two cameras, one held blob. Scan crops, Photo attaches what it took: a
+  // damage photo on a repair has no document in it to find.
+  const status = $("#ent-doc-status", dlg);
+  const setStatus = () => {
+    status.textContent = !scanBlob ? ""
+      : scanBlob instanceof File ? `Attached: ${scanBlob.name}` : "Cropped scan attached";
+  };
+  if (status) {
+    $("#ent-scan", dlg).addEventListener("click", () => $(".ent-scan", dlg).click());
+    $("#ent-photo", dlg).addEventListener("click", () => $(".ent-photo", dlg).click());
+    dlg.querySelectorAll(".ent-scan, .ent-photo").forEach(inp =>
+      inp.addEventListener("change", async ev => {
+        const file = ev.target.files[0];
+        if (!file) { scanBlob = null; setStatus(); return; }
+        if (inp.classList.contains("ent-photo")) { scanBlob = file; setStatus(); return; }
+        const doc = await scanCrop(file, ev.target);
+        // A retake replaces the held photo rather than adding a second one.
+        if (doc === SCAN_RETAKE) { scanBlob = null; setStatus(); return; }
+        scanBlob = doc;
+        if (!scanBlob) ev.target.value = "";
+        setStatus();
+      }));
+  }
   if (isFuel || isCharge) {
     const upd = () => {
       const f = new FormData($("form", dlg));

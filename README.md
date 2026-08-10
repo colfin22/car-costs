@@ -69,10 +69,15 @@ cost per year, per km, and what's due next?*
   beside the photo as taken and choose which to keep. Nothing is stored until
   you pick, so a detection that gets it wrong costs you a tap. If the photo
   itself did not come out, Retake reopens the camera on the spot rather than
-  making you start the scan again. If no document is found, or the optional
-  scanning dependency is not installed, you are offered the photo as taken or
-  another go at it. Detection runs on the server rather than in the browser
-  precisely so that it does not depend on what phone you happen to be holding.
+  making you start the scan again. If no document is found you are offered the
+  photo as taken or another go at it. Detection runs on the server rather than
+  in the browser precisely so that it does not depend on what phone you happen
+  to be holding, and an instance without the optional scanning dependency simply
+  attaches what you took.
+- Scan and Pic are separate buttons. Scan is for paperwork and runs the crop
+  step above. Pic is the same camera with none of it, for a wheel, a paint
+  defect or crash damage, which are whole photos with no document in them to
+  find. Both sit beside the plain file picker everywhere an attachment can go.
 
 **A status page per car**
 - Tap-to-upload photo (resized server-side, shown in a consistent 4:3 frame
