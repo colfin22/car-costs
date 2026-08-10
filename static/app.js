@@ -783,9 +783,11 @@ function picked_mm(f, corners) {
 }
 
 function baselineCheckFor(car, entry) {
-  // Mirrors the server's rule: the fitting's companion check shares its date and corners.
-  return (car._entries || []).find(e => e.category === "tyre_check" && e.date === entry.date
-    && e.corners === entry.corners && e.note === "Full tread when fitted");
+  // Mirrors the server's rule: the fitting's baseline is the check sharing its
+  // date and corners, whoever wrote it.
+  const same = (car._entries || []).filter(e => e.category === "tyre_check"
+    && e.date === entry.date && e.corners === entry.corners);
+  return same.find(e => e.note === "Full tread when fitted") || same[0];
 }
 
 function prefillEntry(dlg, cat, entry, car) {

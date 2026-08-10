@@ -1016,10 +1016,16 @@ def add_entry(car_id: int, e: EntryNew):
 
 
 def baseline_check_of(con, row):
-    """The companion check add_entry wrote for a tyre fitting, if it is still there."""
+    """A tyre fitting's baseline check: the check sharing its date and corners.
+
+    Matching on date and corners rather than on the note is deliberate — baselines
+    entered by hand before add_entry wrote them carry their own wording, and they
+    are just as much the fitting's baseline. The one add_entry wrote wins if both
+    somehow exist.
+    """
     return con.execute(
         "SELECT * FROM entries WHERE car_id=? AND category='tyre_check' AND date=? "
-        "AND corners=? AND note=? ORDER BY id LIMIT 1",
+        "AND corners=? ORDER BY (note=?) DESC, id LIMIT 1",
         (row["car_id"], row["date"], row["corners"], BASELINE_NOTE)).fetchone()
 
 
@@ -1061,8 +1067,13 @@ def edit_entry(entry_id: int, e: EntryNew, dry_run: bool = False):
                 con.execute(
                     "UPDATE entries SET date=?, odometer=?, corners=?, tread_mm=? WHERE id=?",
                     (d, e.odometer, e.corners, baseline_tread, companion["id"]))
-            else:
+            elif companion["note"] == BASELINE_NOTE:
                 con.execute("DELETE FROM entries WHERE id=?", (companion["id"],))
+            else:
+                # A check written by hand is somebody's own record, not this fitting's
+                # to throw away — move it with the fitting and leave its reading alone.
+                con.execute("UPDATE entries SET date=?, corners=? WHERE id=?",
+                            (d, e.corners, companion["id"]))
         elif baseline_tread and row["category"] == "tyres":
             chk = con.execute(
                 "INSERT INTO entries (car_id, date, category, odometer, cost, note, "
