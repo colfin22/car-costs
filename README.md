@@ -60,10 +60,9 @@ cost per year, per km, and what's due next?*
   change would move a service or belt due date, showing the old date and the new
   one, because a date or an odometer correction can quietly shift a clock.
 - Document attachments: hang receipts, invoices, certs and test reports (PDF or
-  photos, 10 MB each) on any entry via the 📎 on its row, or in the car's
-  Documents section for paperwork with no cost attached. A plain file picker
-  sits alongside for PDFs and existing photos, which are stored exactly as
-  received.
+  photos, 10 MB each) on any entry via the 📎 on its row, or in the car's Docs
+  and pics card for anything with no cost attached. A plain file picker sits
+  alongside for PDFs and existing photos, which are stored exactly as received.
 - Scan a receipt and it comes out flat. Scanning opens the camera directly, the
   server finds the document in the photo and flattens it, and you see the crop
   beside the photo as taken and choose which to keep. Nothing is stored until
@@ -74,10 +73,15 @@ cost per year, per km, and what's due next?*
   in the browser precisely so that it does not depend on what phone you happen
   to be holding, and an instance without the optional scanning dependency simply
   attaches what you took.
-- Scan and Pic are separate buttons. Scan is for paperwork and runs the crop
-  step above. Pic is the same camera with none of it, for a wheel, a paint
-  defect or crash damage, which are whole photos with no document in them to
-  find. Both sit beside the plain file picker everywhere an attachment can go.
+- Scan and Pic are separate buttons in the Docs and pics card. Scan is for
+  paperwork and runs the crop step above. Pic is the same camera with none of
+  it, for a wheel, a paint defect or crash damage, which are whole photos with
+  no document in them to find. An expense only offers Scan, because what belongs
+  on a fuel or toll entry is its receipt.
+- Tick "Keep camera open for more" and the camera comes straight back after each
+  one, so a set of damage photos or a receipt that runs to several pages is one
+  trip rather than several. Each lands as it is taken and the list catches up
+  when you untick.
 
 **A status page per car**
 - Tap-to-upload photo (resized server-side, shown in a consistent 4:3 frame
