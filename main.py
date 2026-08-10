@@ -36,7 +36,7 @@ PERIODIC = ("toll", "parking")   # categories that also accept a monthly total
 TYRE_CORNERS = ("FL", "FR", "RL", "RR")
 FUEL_TYPES = ("petrol", "diesel", "hybrid", "phev", "ev")
 
-APP_VERSION = "1.8.0"   # bump on release; shown on the home screen
+APP_VERSION = "1.9.0"   # bump on release; shown on the home screen
 
 app = FastAPI(title="Car Costs", version=APP_VERSION)
 
