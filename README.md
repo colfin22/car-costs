@@ -60,19 +60,29 @@ cost per year, per km, and what's due next?*
   change would move a service or belt due date, showing the old date and the new
   one, because a date or an odometer correction can quietly shift a clock.
 - Document attachments: hang receipts, invoices, certs and test reports (PDF or
-  photos, 10 MB each) on any entry via the 📎 on its row, or in the car's
-  Documents section for paperwork with no cost attached. A plain file picker
-  sits alongside for PDFs and existing photos, which are stored exactly as
-  received.
+  photos, 10 MB each) on any entry via the 📎 on its row, or in the car's Docs
+  and pics card for anything with no cost attached. A plain file picker sits
+  alongside for PDFs and existing photos, which are stored exactly as received.
 - Scan a receipt and it comes out flat. Scanning opens the camera directly, the
   server finds the document in the photo and flattens it, and you see the crop
   beside the photo as taken and choose which to keep. Nothing is stored until
   you pick, so a detection that gets it wrong costs you a tap. If the photo
   itself did not come out, Retake reopens the camera on the spot rather than
-  making you start the scan again. If no document is found, or the optional
-  scanning dependency is not installed, you are offered the photo as taken or
-  another go at it. Detection runs on the server rather than in the browser
-  precisely so that it does not depend on what phone you happen to be holding.
+  making you start the scan again. If no document is found you are offered the
+  photo as taken or another go at it. Detection runs on the server rather than
+  in the browser precisely so that it does not depend on what phone you happen
+  to be holding, and an instance without the optional scanning dependency simply
+  attaches what you took.
+- Scan and Pic are separate buttons in the Docs and pics card. Scan is for
+  paperwork and runs the crop step above. Pic is the same camera with none of
+  it, for a wheel, a paint defect or crash damage, which are whole photos with
+  no document in them to find. An expense only offers Scan, because what belongs
+  on a fuel or toll entry is its receipt.
+- Every scan and pic offers Take another, so a set of damage photos or a receipt
+  running to several pages is one trip rather than several. Each lands as it is
+  taken and the list catches up when you are done. It is a button rather than
+  something you set beforehand because a phone only reopens the camera from a
+  real tap.
 
 **A status page per car**
 - Tap-to-upload photo (resized server-side, shown in a consistent 4:3 frame
