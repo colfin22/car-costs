@@ -76,8 +76,12 @@ cost per year, per km, and what's due next?*
 - **Thumbnails on every image row**, so a list of scans is something you can
   read at a glance instead of a column of near identical file names. Each one is
   drawn once, the first time it is asked for, and cached beside the document.
-- **Rotate** a photo that came out sideways, from the row it sits on. It turns
-  the stored file, so anything that opens it later sees it the right way up.
+- **Name a picture, and rotate one that came out sideways.** The ✎ on an image
+  row opens it with a note field and turn buttons. The note stands in for the
+  file name in the lists, which is what lets you tell two receipts apart; a
+  phone picks that name, not you. Rotating turns the stored file, so anything
+  that opens it later sees it the right way up. The file name is never
+  overwritten, since it is what a download is called.
 
 **A status page per car**
 - Tap-to-upload photo (resized server-side, shown in a consistent 4:3 frame
@@ -308,6 +312,7 @@ which due dates the change would move, without saving) ·
 document in it and hand it straight back, storing nothing) ·
 `GET /api/attachments/{id}/thumb` (small square picture, drawn once and cached) ·
 `POST /api/attachments/{id}/rotate?degrees=90|180|270` ·
+`PATCH /api/attachments/{id}` (the note shown instead of the file name) ·
 `POST /api/cars/{id}/photo` · `GET /api/dues` ·
 `GET /api/summary[?year=&include_archived=]` (all cars + dues in one payload,
 for driving several Home Assistant sensors from a single poll) · `GET /healthz`
