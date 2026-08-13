@@ -73,6 +73,11 @@ cost per year, per km, and what's due next?*
   crash damage. Both sit in the Docs and pics card; an expense offers Scan only.
 - Every scan and pic offers **Take another**, so a set of damage photos or a
   multi-page receipt is one trip. Each lands as it is taken.
+- **Thumbnails on every image row**, so a list of scans is something you can
+  read at a glance instead of a column of near identical file names. Each one is
+  drawn once, the first time it is asked for, and cached beside the document.
+- **Rotate** a photo that came out sideways, from the row it sits on. It turns
+  the stored file, so anything that opens it later sees it the right way up.
 
 **A status page per car**
 - Tap-to-upload photo (resized server-side, shown in a consistent 4:3 frame
@@ -152,7 +157,7 @@ cost per year, per km, and what's due next?*
 ## Stack
 
 FastAPI + SQLite (stdlib `sqlite3`, no ORM) + one vanilla-JS page. The database
-and photos live in `data/` (gitignored). ~2,600 lines all-in.
+and photos live in `data/` (gitignored). ~2,900 lines all-in.
 
 The app writes a daily snapshot of the database to `data/backups/` (keeps the
 last 7, `CARCOSTS_BACKUP_KEEP` to change) using SQLite's `VACUUM INTO` — a
@@ -301,6 +306,8 @@ is the nicer phone experience.
 which due dates the change would move, without saving) ·
 `DELETE /api/entries/{id}` · `POST /api/scan/preview` (crop a photo to the
 document in it and hand it straight back, storing nothing) ·
+`GET /api/attachments/{id}/thumb` (small square picture, drawn once and cached) ·
+`POST /api/attachments/{id}/rotate?degrees=90|180|270` ·
 `POST /api/cars/{id}/photo` · `GET /api/dues` ·
 `GET /api/summary[?year=&include_archived=]` (all cars + dues in one payload,
 for driving several Home Assistant sensors from a single poll) · `GET /healthz`
