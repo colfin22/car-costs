@@ -246,7 +246,9 @@ async function showCar(id, year) {
       ${cats || '<div class="muted">No entries yet — add the first below.</div>'}
       <div class="row muted" style="margin-top:6px">
         <span>${s.km_driven ? s.km_driven.toLocaleString() + " km logged" : ""}</span>
-        <span>${s.cost_per_km ? eur(s.cost_per_km) + "/km" : ""}</span></div>
+        <span>${s.cost_per_km ? eur(s.cost_per_km) + "/km" : ""}</span>
+        <span>${d.fuel.eur_per_100km ? "fuel " + eur(d.fuel.eur_per_100km) + "/100km" : ""}</span>
+        <span>${d.fuel.l_per_100km ? d.fuel.l_per_100km + " L/100km" : ""}</span></div>
     </div>
     <div class="card"><div class="muted" style="margin-bottom:4px">Recent</div>
       <div class="recent-scroll">
