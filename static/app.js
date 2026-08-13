@@ -68,9 +68,14 @@ async function showList() {
           <span style="flex:1"><span class="nm">${esc(c.name)}</span>` +
           (c.reg ? `<span class="reg">${esc(c.reg)}</span>` : "") +
         `</span><span class="big">${eur(c.summary.total)}</span></div>
-        <div class="row muted"><span>${c.fuel.last_price_per_litre ? "last fill " + c.fuel.last_price_per_litre.toFixed(3) + " €/L" : "no fills yet"}</span>
-        <span>${c.fuel.eur_per_100km ? "fuel " + eur(c.fuel.eur_per_100km) + "/100km" : ""}</span>
-        <span>${c.fuel.l_per_100km ? c.fuel.l_per_100km + " L/100km" : ""}</span></div>
+        <div class="row muted" style="white-space:nowrap"><span>${c.fuel.last_price_per_litre ? "last fill " + c.fuel.last_price_per_litre.toFixed(3) + " €/L" : "no fills yet"}</span></div>` +
+        // Same shape as the car page: three cells in one row squeezed each other
+        // and broke mid-figure at 360px.
+        ((c.fuel.eur_per_100km || c.fuel.l_per_100km)
+          ? `<div class="row muted" style="margin-top:2px;white-space:nowrap">
+               <span>${c.fuel.eur_per_100km ? "fuel " + eur(c.fuel.eur_per_100km) + "/100km" : ""}</span>
+               <span>${c.fuel.l_per_100km ? c.fuel.l_per_100km + " L/100km" : ""}</span></div>`
+          : "") + `
       </div>`).join("");
   const all = await api("/api/cars?include_archived=true");
   const retired = all.filter(c => c.archived);
