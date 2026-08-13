@@ -718,22 +718,49 @@ def year_summary(con, car_id: int, year: int):
 
 
 def fuel_stats(con, car_id: int):
-    """L/100km from consecutive fuel fills with odometer readings."""
+    """Consumption and fuel cost per 100 km, from consecutive fills.
+
+    Both are pooled rather than averaged per leg, so a 40 km leg cannot pull as
+    hard as a 700 km one.
+
+    A leg is measured by the litres of the fill that ENDS it, which is what
+    replaced the fuel burned over it. The opening fill's volume is irrelevant,
+    only that a fill happened at that odometer. Litres were optional until
+    2026-08-13, so a fill may have none: that costs its own leg and breaks the
+    run, but the next leg still starts cleanly from it. Dropping such a fill from
+    the list instead, as this once did, credits its distance to the next fill's
+    tank and understates consumption badly.
+
+    The cost figure needs only the amount and the odometer, both mandatory, so it
+    always spans every fill.
+    """
     fills = con.execute(
-        "SELECT date, odometer, litres, price_per_litre FROM entries "
-        "WHERE car_id=? AND category='fuel' AND odometer IS NOT NULL AND litres IS NOT NULL "
+        "SELECT date, odometer, litres, cost FROM entries "
+        "WHERE car_id=? AND category='fuel' AND odometer IS NOT NULL "
         "ORDER BY odometer", (car_id,)).fetchall()
-    legs = []
+    best_litres = best_dist = run_litres = run_dist = 0.0
+    spend = spend_dist = 0.0
     for prev, cur in zip(fills, fills[1:]):
         dist = cur["odometer"] - prev["odometer"]
-        if dist > 0:
-            legs.append(100.0 * cur["litres"] / dist)
+        if dist <= 0:                             # a corrected odometer, not a leg
+            run_litres = run_dist = 0.0
+            continue
+        spend += cur["cost"]
+        spend_dist += dist
+        if cur["litres"] is None:
+            run_litres = run_dist = 0.0           # this leg's burn is unknown, so it breaks the run
+            continue
+        run_litres += cur["litres"]
+        run_dist += dist
+        if run_dist > best_dist:
+            best_litres, best_dist = run_litres, run_dist
     last = con.execute(
         "SELECT price_per_litre FROM entries WHERE car_id=? AND category='fuel' "
         "AND price_per_litre IS NOT NULL ORDER BY date DESC, id DESC LIMIT 1",
         (car_id,)).fetchone()
     return {
-        "l_per_100km": round(sum(legs) / len(legs), 1) if legs else None,
+        "l_per_100km": round(100.0 * best_litres / best_dist, 1) if best_dist else None,
+        "eur_per_100km": round(100.0 * spend / spend_dist, 2) if spend_dist else None,
         "last_price_per_litre": last["price_per_litre"] if last else None,
     }
 
@@ -942,6 +969,10 @@ def validate_entry(e: EntryNew):
             raise HTTPException(422, "amount is required for a fuel entry")
         if e.odometer is None:
             raise HTTPException(422, "odometer reading is required for a fuel entry")
+        # Compulsory since 2026-08-13. Older fills may have none; those stay as they are
+        # and break the L/100km run rather than being guessed at.
+        if e.litres is None:
+            raise HTTPException(422, "litres are required for a fuel entry")
     if cost is None:
         raise HTTPException(422, "cost is required (or litres+price / kwh+price for fuel/charge)")
     return d, cost, baseline_tread
@@ -1560,7 +1591,8 @@ def summary(year: int | None = None, include_archived: bool = False):
                 "ev_enabled": car["ev_enabled"],
                 "total": s["total"], "by_category": s["by_category"],
                 "km_driven": s["km_driven"], "cost_per_km": s["cost_per_km"],
-                "l_per_100km": f["l_per_100km"], "last_price_per_litre": f["last_price_per_litre"],
+                "l_per_100km": f["l_per_100km"], "eur_per_100km": f["eur_per_100km"],
+                "last_price_per_litre": f["last_price_per_litre"],
                 "current_odo": cur, "next_due": due_items[0] if due_items else None,
             })
             for it in due_items:

@@ -108,6 +108,23 @@ template:
              | selectattr('id','eq',1) | first %}
           {{ c.l_per_100km }}
 
+      # Fuel spend only, and it always has a value: it needs just the amount and
+      # the odometer. Note this moves with the price at the pump as well as with
+      # the driving, unlike the L/100km above.
+      - name: Family car fuel cost per 100 km
+        unique_id: car_costs_car1_eur100km
+        unit_of_measurement: "€/100km"
+        availability: >-
+          {% set c = (state_attr('sensor.car_costs_summary','cars') or [])
+             | selectattr('id','eq',1) | first | default(none) %}
+          {{ c is not none and c.eur_per_100km is not none }}
+        state: >-
+          {% set c = (state_attr('sensor.car_costs_summary','cars') or [])
+             | selectattr('id','eq',1) | first %}
+          {{ c.eur_per_100km }}
+
+      # Everything, not just fuel: insurance, tax, NCT, repairs. Different scope
+      # and a different unit to the sensor above, so keep the names distinct.
       - name: Family car cost per km
         unique_id: car_costs_car1_cost_per_km
         unit_of_measurement: "€/km"

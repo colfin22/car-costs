@@ -69,6 +69,7 @@ async function showList() {
           (c.reg ? `<span class="reg">${esc(c.reg)}</span>` : "") +
         `</span><span class="big">${eur(c.summary.total)}</span></div>
         <div class="row muted"><span>${c.fuel.last_price_per_litre ? "last fill " + c.fuel.last_price_per_litre.toFixed(3) + " €/L" : "no fills yet"}</span>
+        <span>${c.fuel.eur_per_100km ? "fuel " + eur(c.fuel.eur_per_100km) + "/100km" : ""}</span>
         <span>${c.fuel.l_per_100km ? c.fuel.l_per_100km + " L/100km" : ""}</span></div>
       </div>`).join("");
   const all = await api("/api/cars?include_archived=true");
@@ -928,7 +929,7 @@ function entryDialog(car, cat, entry) {
   const unitFields = isFuel ? `
       <label>Amount (€)</label><input name="cost" type="number" step="0.01" inputmode="decimal" required>
       <label>Odometer (km)</label><input name="odometer" type="number" step="1" inputmode="numeric" required>
-      <label>Litres (optional)</label><input name="litres" type="number" step="0.01" inputmode="decimal">
+      <label>Litres</label><input name="litres" type="number" step="0.01" inputmode="decimal" required>
       <div class="hint" id="calc"></div>`
     : isCharge ? `
       <label>Odometer (km)</label><input name="odometer" type="number" step="1" inputmode="numeric">
