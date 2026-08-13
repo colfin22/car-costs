@@ -288,7 +288,7 @@ async function showCar(id, year) {
     <div class="card"><div class="muted" style="margin-bottom:4px">Docs and pics</div>
       <div id="doc-list">${(d.attachments || []).map(a => `
         <div class="entry"><span class="doc-open" data-open="${a.id}">${esc(a.filename)} <span class="muted">${dmy(a.created)}</span></span>
-        <button class="danger" data-adel="${a.id}">✕</button></div>`).join("") ||
+        <span class="doc-btns">${rotBtn(a)}<button class="danger" data-adel="${a.id}">✕</button></span></div>`).join("") ||
         '<div class="muted" id="doc-empty">Nothing here yet — certs, receipts and reports live here, and so do pictures of the car.</div>'}</div>
       <div class="row" style="gap:10px;margin-top:8px">
         <button class="ghost" id="photo-doc" style="flex:1">📷 Pic</button>
@@ -342,11 +342,14 @@ async function showCar(id, year) {
       entryDetailDialog(c, d.entries.find(en => en.id === +row.dataset.entry));
     }));
   app.querySelectorAll("[data-open]").forEach(el =>
-    el.addEventListener("click", () => window.open(`/api/attachments/${el.dataset.open}`)));
+    el.addEventListener("click", () => window.open(docUrl(el.dataset.open))));
   app.querySelectorAll("[data-adel]").forEach(b =>
     b.addEventListener("click", async () => {
       if (confirm("Delete this document?")) { await api(`/api/attachments/${b.dataset.adel}`, { method: "DELETE" }); showCar(id); }
     }));
+  app.querySelectorAll("[data-rot]").forEach(b =>
+    b.addEventListener("click", () =>
+      rotateDialog((d.attachments || []).find(a => a.id === +b.dataset.rot), () => showCar(id))));
   // Scan runs the crop step. Pic is the same camera with none of it, because a
   // wheel or a paint defect is a whole photo with no document in it to find, and
   // it only lives here: an expense wants a receipt, not a picture of the car.
@@ -367,8 +370,10 @@ async function showCar(id, year) {
     const row = document.createElement("div");
     row.className = "entry";
     row.innerHTML = `<span class="doc-open" data-open="${att.id}">${esc(att.filename)} <span class="muted">${dmy(att.created)}</span></span>
-      <button class="danger" data-adel="${att.id}">✕</button>`;
-    $("[data-open]", row).addEventListener("click", () => window.open(`/api/attachments/${att.id}`));
+      <span class="doc-btns">${rotBtn(att)}<button class="danger" data-adel="${att.id}">✕</button></span>`;
+    $("[data-open]", row).addEventListener("click", () => window.open(docUrl(att.id)));
+    if ($("[data-rot]", row))
+      $("[data-rot]", row).addEventListener("click", () => rotateDialog(att, () => showCar(id)));
     $("[data-adel]", row).addEventListener("click", async () => {
       if (confirm("Delete this document?")) { await api(`/api/attachments/${att.id}`, { method: "DELETE" }); showCar(id); }
     });
@@ -414,6 +419,52 @@ async function showCar(id, year) {
       if (!more) showCar(id);
       else if (att) addRow(att);
     });
+}
+
+/* ---------- rotating a stored image (#43) ----------
+   A photo taken over a receipt often lands sideways, and until now it stayed
+   that way: every other path here only reads an attachment. The rotate is a
+   real rewrite on the server, so once it is saved the file itself is upright
+   and anything that opens it later — this app, a download, a thumbnail — sees
+   the same picture.
+
+   `docV` is a cache buster, not decoration. The browser has already cached
+   /api/attachments/{id}; without a changing query the rotation looks like it
+   did nothing at all, which is the same trap as the ?v= rule on app.js. */
+const docV = {};
+const docUrl = id => `/api/attachments/${id}${docV[id] ? `?v=${docV[id]}` : ""}`;
+const canRotate = att => (att.media_type || "").startsWith("image/");
+const rotBtn = att => canRotate(att) ? `<button class="ghost rot" data-rot="${att.id}" title="Rotate">↻</button>` : "";
+
+function rotateDialog(att, done) {
+  let deg = 0;
+  const dlg = document.createElement("dialog");
+  dlg.className = "rot-dlg";
+  dlg.innerHTML = `<h1>Rotate</h1>
+    <p class="hint" style="margin:0 0 8px">${esc(att.filename)}</p>
+    <div class="rot-stage"><img alt="" src="/api/attachments/${att.id}?v=${Date.now()}"></div>
+    <div class="dlg-actions">
+      <button type="button" class="ghost" id="rot-l" title="Turn left">↺</button>
+      <button type="button" class="ghost" id="rot-r" title="Turn right">↻</button>
+      <button type="button" class="ghost" id="rot-x">Cancel</button>
+      <button type="button" id="rot-ok">Save</button></div>`;
+  document.body.append(dlg);
+  const img = $("img", dlg);
+  const turn = by => { deg = (deg + by + 360) % 360; img.style.transform = `rotate(${deg}deg)`; };
+  const end = () => { dlg.close(); dlg.remove(); };
+  $("#rot-l", dlg).addEventListener("click", () => turn(-90));
+  $("#rot-r", dlg).addEventListener("click", () => turn(90));
+  $("#rot-x", dlg).addEventListener("click", end);
+  dlg.addEventListener("cancel", ev => { ev.preventDefault(); end(); });
+  $("#rot-ok", dlg).addEventListener("click", async () => {
+    if (!deg) return end();               // nothing turned, nothing to write
+    try { await api(`/api/attachments/${att.id}/rotate?degrees=${deg}`, { method: "POST" }); }
+    catch (e) { alert(e.message); return; }
+    docV[att.id] = Date.now();
+    end();
+    if (done) done();
+  });
+  dlg.showModal();
 }
 
 async function uploadDoc(path, file, name) {
@@ -594,7 +645,7 @@ function attachmentsDialog(car, entry) {
   dlg.innerHTML = `<form method="dialog"><h1>${CAT_LABELS[entry.category]} ${dmy(entry.date)} — attachments</h1>
     ${entry.attachments.map(a => `
       <div class="entry"><span class="doc-open" data-open="${a.id}">${esc(a.filename)}</span>
-      <button type="button" class="danger" data-adel="${a.id}">✕</button></div>`).join("") ||
+      <span class="doc-btns">${rotBtn(a)}<button type="button" class="danger" data-adel="${a.id}">✕</button></span></div>`).join("") ||
       '<div class="muted">Nothing attached yet.</div>'}
     <input type="file" class="att-scan" accept="image/*" capture="environment" hidden>
     <input type="file" class="att-file" accept="image/*,application/pdf" hidden>
@@ -604,7 +655,11 @@ function attachmentsDialog(car, entry) {
   document.body.append(dlg);
   dlg.addEventListener("close", () => dlg.remove());
   dlg.querySelectorAll("[data-open]").forEach(el =>
-    el.addEventListener("click", () => window.open(`/api/attachments/${el.dataset.open}`)));
+    el.addEventListener("click", () => window.open(docUrl(el.dataset.open))));
+  dlg.querySelectorAll("[data-rot]").forEach(b =>
+    b.addEventListener("click", () =>
+      rotateDialog(entry.attachments.find(a => a.id === +b.dataset.rot),
+                   () => { dlg.close("cancel"); showCar(car.id); })));
   dlg.querySelectorAll("[data-adel]").forEach(b =>
     b.addEventListener("click", async () => {
       if (!confirm("Delete this document?")) return;

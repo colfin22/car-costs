@@ -1133,7 +1133,8 @@ def photo(name: str):
 # document has no cost entry to hang on (insurance cert after a date-only
 # renewal). Files are stored exactly as uploaded — no resizing, documents must
 # stay legible — under data/docs/, named by attachment id with an extension
-# derived from the sniffed type (never from the client's filename).
+# derived from the sniffed type (never from the client's filename). Rotating one
+# (issue #43) is the single exception, and it keeps the format and the name.
 DOC_EXT = {"application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png",
            "image/webp": "webp", "image/heic": "heic"}
 PIL_TYPES = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp", "HEIF": "image/heic"}
@@ -1377,6 +1378,57 @@ def get_attachment(att_id: int):
     safe = att["filename"].replace('"', "")
     return FileResponse(doc_path(att), media_type=att["media_type"],
                         headers={"Content-Disposition": f'inline; filename="{safe}"'})
+
+
+ROTATIONS = {90: Image.Transpose.ROTATE_270, 180: Image.Transpose.ROTATE_180,
+             270: Image.Transpose.ROTATE_90}   # clockwise degrees -> Pillow's anticlockwise names
+
+
+@app.post("/api/attachments/{att_id}/rotate")
+def rotate_attachment(att_id: int, degrees: int = 90):
+    """Turn a stored image clockwise and write it back (issue #43).
+
+    A photo taken over a receipt often lands sideways, and every other path here
+    is read-only, so the file would stay that way for good. This is the one place
+    the app rewrites an attachment; it keeps the format, the filename and the id,
+    because `doc_path()` is derived from the media type and the row must keep
+    pointing at its own file.
+
+    The transpose comes BEFORE the rotate: a phone JPEG carries its orientation
+    in EXIF, and the saved copy carries no EXIF at all, so anything that reads
+    the file afterwards sees the same picture the person just approved.
+    """
+    if degrees not in ROTATIONS:
+        raise HTTPException(422, "degrees must be 90, 180 or 270")
+    with db() as con:
+        att = con.execute("SELECT * FROM attachments WHERE id=?", (att_id,)).fetchone()
+    if not att or not os.path.isfile(doc_path(att)):
+        raise HTTPException(404, "no such attachment")
+    if att["media_type"] == "application/pdf":
+        raise HTTPException(422, "only images can be rotated")
+
+    path = doc_path(att)
+    tmp = os.path.join(DOCS_DIR, f".rotate-{pysecrets.token_hex(8)}")
+    try:
+        # Full resolution on purpose — _load_upright() drafts to a target size,
+        # which would quietly shrink the document every time it was turned.
+        with Image.open(path) as im:
+            fmt = im.format
+            out = ImageOps.exif_transpose(im).transpose(ROTATIONS[degrees])
+        opts = {"quality": 92} if fmt == "JPEG" else {}
+        out.save(tmp, format=fmt, **opts)
+        size = os.path.getsize(tmp)
+        os.replace(tmp, path)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(422, "this image could not be rotated")
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    with db() as con:
+        con.execute("UPDATE attachments SET size=? WHERE id=?", (size, att_id))
+        return dict(con.execute("SELECT * FROM attachments WHERE id=?", (att_id,)).fetchone())
 
 
 @app.delete("/api/attachments/{att_id}", status_code=204)
