@@ -444,7 +444,8 @@ def init_db():
           filename TEXT NOT NULL,
           media_type TEXT NOT NULL,
           size INTEGER NOT NULL,
-          created TEXT NOT NULL
+          created TEXT NOT NULL,
+          note TEXT NOT NULL DEFAULT ''
         );
         CREATE INDEX IF NOT EXISTS idx_attachments_entry ON attachments(entry_id);
         CREATE TABLE IF NOT EXISTS settings (
@@ -468,6 +469,10 @@ def init_db():
         for col in ("corners", "tyre_size", "tyre_brand", "tread_mm", "period"):
             if col not in have_e:
                 con.execute(f"ALTER TABLE entries ADD COLUMN {col} TEXT DEFAULT ''")
+        have_a = {r["name"] for r in con.execute("PRAGMA table_info(attachments)")}
+        for col in ("note",):   # issue #47; the first column this table has gained
+            if col not in have_a:
+                con.execute(f"ALTER TABLE attachments ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
         if con.execute("SELECT COUNT(*) c FROM cars").fetchone()["c"] == 0:
             con.execute("INSERT INTO cars (name) VALUES ('My Car')")
 
@@ -841,7 +846,7 @@ def car_detail(car_id: int, year: int | None = None):
             "FROM entries WHERE car_id=? AND category IN ('service','tyres','repair') "
             "ORDER BY date DESC, id DESC", (car_id,))]
         atts = con.execute(
-            "SELECT id, entry_id, filename, media_type, size, created FROM attachments "
+            "SELECT id, entry_id, filename, media_type, size, created, note FROM attachments "
             "WHERE car_id=? ORDER BY created DESC, id DESC", (car_id,)).fetchall()
         by_entry = {}
         for a in atts:
@@ -850,7 +855,8 @@ def car_detail(car_id: int, year: int | None = None):
                 # row gets a thumbnail and a rotate button, and without it every
                 # attachment there looked like a PDF.
                 by_entry.setdefault(a["entry_id"], []).append(
-                    {"id": a["id"], "filename": a["filename"], "media_type": a["media_type"]})
+                    {"id": a["id"], "filename": a["filename"], "media_type": a["media_type"],
+                     "note": a["note"]})
         return {"car": dict(car),
                 "attachments": [dict(a) for a in atts if a["entry_id"] is None],
                 "next_due": car_dues[0] if car_dues else None,
@@ -1400,6 +1406,32 @@ def get_attachment(att_id: int):
     safe = att["filename"].replace('"', "")
     return FileResponse(doc_path(att), media_type=att["media_type"],
                         headers={"Content-Disposition": f'inline; filename="{safe}"'})
+
+
+class AttachmentPatch(BaseModel):
+    note: str = ""
+
+
+MAX_NOTE = 80
+
+
+@app.patch("/api/attachments/{att_id}")
+def patch_attachment(att_id: int, patch: AttachmentPatch):
+    """Name an attachment (issue #47).
+
+    A phone picks the file name, so a list of scans reads as `scan.jpg`,
+    `scan-2.jpg` and nothing else. The note stands in for that name in the
+    lists; the file name itself is never touched, because it is what a download
+    is called and the only record of what the phone actually produced.
+    """
+    note = " ".join(patch.note.split())      # collapse whitespace; blank clears it
+    if len(note) > MAX_NOTE:
+        raise HTTPException(422, f"a note is at most {MAX_NOTE} characters")
+    with db() as con:
+        if not con.execute("SELECT 1 FROM attachments WHERE id=?", (att_id,)).fetchone():
+            raise HTTPException(404, "no such attachment")
+        con.execute("UPDATE attachments SET note=? WHERE id=?", (note, att_id))
+        return dict(con.execute("SELECT * FROM attachments WHERE id=?", (att_id,)).fetchone())
 
 
 @app.get("/api/attachments/{att_id}/thumb")
