@@ -718,49 +718,51 @@ def year_summary(con, car_id: int, year: int):
 
 
 def fuel_stats(con, car_id: int):
-    """Consumption and fuel cost per 100 km, from consecutive fills.
+    """Consumption and fuel cost per 100 km, pooled over the whole span of fills.
 
-    Both are pooled rather than averaged per leg, so a 40 km leg cannot pull as
-    hard as a 700 km one.
+    EVERY fill counts, including the first, over the distance from the first
+    odometer to the last. The usual convention excludes the first fill, on the
+    grounds that its fuel was already in the tank when measuring started. That
+    only holds when the tank sits at the same level at both ends, and it is
+    catastrophic over a short history: with two fills it discards most of the
+    fuel bought while still counting all of the distance, which is how this once
+    reported 1.5 L/100km for a diesel Focus.
 
-    A leg is measured by the litres of the fill that ENDS it, which is what
-    replaced the fuel burned over it. The opening fill's volume is irrelevant,
-    only that a fill happened at that odometer. Litres were optional until
-    2026-08-13, so a fill may have none: that costs its own leg and breaks the
-    run, but the next leg still starts cleanly from it. Dropping such a fill from
-    the list instead, as this once did, credits its distance to the next fill's
-    tank and understates consumption badly.
+    Counting everything has the opposite bias, overstating by whatever is still
+    in the tank unburned, but that is bounded by tank size and shrinks as the
+    distance grows. The two conventions converge after enough fills.
 
-    The cost figure needs only the amount and the odometer, both mandatory, so it
-    always spans every fill.
+    Litres were optional until 2026-08-13, so an older fill may have none. Such a
+    fill breaks the consumption run: the longest run of consecutive fills that
+    ALL carry litres wins. The cost figure needs only the amount and the
+    odometer, both mandatory, so it always spans every fill.
     """
     fills = con.execute(
         "SELECT date, odometer, litres, cost FROM entries "
         "WHERE car_id=? AND category='fuel' AND odometer IS NOT NULL "
         "ORDER BY odometer", (car_id,)).fetchall()
-    best_litres = best_dist = run_litres = run_dist = 0.0
-    spend = spend_dist = 0.0
-    for prev, cur in zip(fills, fills[1:]):
-        dist = cur["odometer"] - prev["odometer"]
-        if dist <= 0:                             # a corrected odometer, not a leg
-            run_litres = run_dist = 0.0
+    spend = sum(f["cost"] for f in fills)
+    spend_dist = fills[-1]["odometer"] - fills[0]["odometer"] if len(fills) > 1 else 0.0
+
+    best_litres = best_dist = 0.0                 # longest run of fills that all have litres
+    run = []
+    for f in list(fills) + [None]:
+        if f is not None and f["litres"] is not None:
+            run.append(f)
             continue
-        spend += cur["cost"]
-        spend_dist += dist
-        if cur["litres"] is None:
-            run_litres = run_dist = 0.0           # this leg's burn is unknown, so it breaks the run
-            continue
-        run_litres += cur["litres"]
-        run_dist += dist
-        if run_dist > best_dist:
-            best_litres, best_dist = run_litres, run_dist
+        if len(run) > 1:
+            dist = run[-1]["odometer"] - run[0]["odometer"]
+            if dist > best_dist:
+                best_litres = sum(r["litres"] for r in run)
+                best_dist = dist
+        run = []
     last = con.execute(
         "SELECT price_per_litre FROM entries WHERE car_id=? AND category='fuel' "
         "AND price_per_litre IS NOT NULL ORDER BY date DESC, id DESC LIMIT 1",
         (car_id,)).fetchone()
     return {
         "l_per_100km": round(100.0 * best_litres / best_dist, 1) if best_dist else None,
-        "eur_per_100km": round(100.0 * spend / spend_dist, 2) if spend_dist else None,
+        "eur_per_100km": round(100.0 * spend / spend_dist, 2) if spend_dist > 0 else None,
         "last_price_per_litre": last["price_per_litre"] if last else None,
     }
 
