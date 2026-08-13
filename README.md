@@ -46,8 +46,8 @@ cost per year, per km, and what's due next?*
 ## Features
 
 **Logging, the way it really happens**
-- Fuel fills are amount (€) + odometer; litres optional (€/L derived when
-  given). Insurance, motor tax, NCT and servicing are dated amounts, freely
+- Fuel fills are amount (€) + odometer + litres (€/L is derived from the
+  first two). Insurance, motor tax, NCT and servicing are dated amounts, freely
   backdatable — start mid-year and enter January's insurance on day one.
 - Standalone mileage entries: log the odometer any time; the newest reading
   shows on the car's page and feeds the stats.
