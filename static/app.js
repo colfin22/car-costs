@@ -434,7 +434,9 @@ async function showCar(id, year) {
 const docV = {};
 const docUrl = id => `/api/attachments/${id}${docV[id] ? `?v=${docV[id]}` : ""}`;
 const canRotate = att => (att.media_type || "").startsWith("image/");
-const rotBtn = att => canRotate(att) ? `<button class="ghost rot" data-rot="${att.id}" title="Rotate or name this picture">↻</button>` : "";
+// A pencil, not an arrow: the dialog behind this button names a picture as well
+// as turning it, and naming is the part you reach for most.
+const rotBtn = att => canRotate(att) ? `<button class="ghost rot" data-rot="${att.id}" title="Name or rotate this picture">✎</button>` : "";
 
 /* A row of file names never says which scan is which receipt (#44). Images get
    a small picture, drawn and cached by the server on first request; a PDF keeps
