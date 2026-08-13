@@ -26,11 +26,11 @@ one-handed at the pump.*
 
 Open it, tap a car, add the entry. That's the entire workflow.
 
-- **Log in seconds** — a fill is amount + odometer at the pump; tax, insurance,
-  NCT and servicing are dated amounts, freely backdatable.
-- **See what it really costs** — year total by category, cost per km, L/100km,
-  per car. Tolls and parking count too, either per journey or as a monthly
-  total off a tag account.
+- **Log in seconds** — a fill is amount, odometer and litres at the pump; tax,
+  insurance, NCT and servicing are dated amounts, freely backdatable.
+- **See what it really costs** — year total by category, cost per km, fuel cost
+  per 100 km and L/100km, per car. Tolls and parking count too, either per
+  journey or as a monthly total off a tag account.
 - **Never miss a date** — badges and banners from 14 days out, plus phone
   reminders through Home Assistant.
 
@@ -46,9 +46,11 @@ cost per year, per km, and what's due next?*
 ## Features
 
 **Logging, the way it really happens**
-- Fuel fills are amount (€) + odometer + litres (€/L is derived from the
-  first two). Insurance, motor tax, NCT and servicing are dated amounts, freely
-  backdatable — start mid-year and enter January's insurance on day one.
+- Fuel fills are amount (€) + odometer + litres, and the €/L is worked out for
+  you. Fills logged before litres were required still count towards costs, they
+  just can't contribute a consumption figure. Insurance, motor tax, NCT and
+  servicing are dated amounts, freely backdatable — start mid-year and enter
+  January's insurance on day one.
 - Standalone mileage entries: log the odometer any time; the newest reading
   shows on the car's page and feeds the stats.
 - Odometer readings are validated against the timeline — no backwards or
@@ -88,8 +90,8 @@ cost per year, per km, and what's due next?*
   and doubling as the home-screen thumbnail), make/model/year/VIN, and badges
   for NCT due, a booked NCT test (with countdown), tax and insurance — amber
   inside 30 days, red overdue.
-- Stats as data accrues: year total by category, cost per km, L/100km from
-  consecutive fills, current mileage.
+- Stats as data accrues: year total by category, cost per km, current mileage,
+  and both fuel figures across every fill, in euro and in litres per 100 km.
 
 **Service log & interval**
 - Every service records what was actually carried out — a per-car service
@@ -145,8 +147,8 @@ cost per year, per km, and what's due next?*
 
 **Lives quietly in your stack**
 - **Home Assistant**: REST sensors for per-car year cost, mileage, efficiency,
-  cost/km and days-to-next-due, plus a two-line automation for 30-day/7-day
-  phone reminders (examples below).
+  fuel cost per 100 km, fuel spend, cost/km and days-to-next-due, plus a
+  two-line automation for 30-day/7-day phone reminders (examples below).
 - **EV-ready**: flip a car's electric toggle and it gains kWh × €/kWh charge
   entries — and the matching HA charge-cost sensor brings itself to life. No
   migration when a car goes electric.
@@ -285,8 +287,8 @@ can't generate entities from a list, so that part needs one small block per
 car — copy the "Car N" group and change the id. It's not needed just to read
 the data; the summary sensor already exposes all of it. Per car you get: year
 cost (with a `by_category` attribute), odometer, distance driven this year,
-fuel efficiency, cost per km, price paid at the last fill, charge cost if the
-car is set to electric, and the soonest thing due.
+fuel efficiency, fuel cost per 100 km, cost per km, price paid at the last fill,
+charge cost if the car is set to electric, and the soonest thing due.
 
 A second optional block gives **each due item its own sensor**: service, tax,
 insurance, NCT and the timing belt, each reporting days remaining with the date
