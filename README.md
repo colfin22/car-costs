@@ -55,34 +55,24 @@ cost per year, per km, and what's due next?*
   impossible values, with backdating fully supported (a reading must simply fit
   between its neighbours in date order).
 - **Tap any entry to see what you logged** — the lists show a one-line
-  summary; tapping opens the full record: every field captured for that entry,
-  its attachments, an edit and a delete. Editing an entry warns you first if the
-  change would move a service or belt due date, showing the old date and the new
-  one, because a date or an odometer correction can quietly shift a clock.
+  summary; tapping opens the full record: every field captured, its
+  attachments, an edit and a delete. Editing warns you first if the change
+  would move a service or belt due date, showing the old date and the new one.
 - Document attachments: hang receipts, invoices, certs and test reports (PDF or
   photos, 10 MB each) on any entry via the 📎 on its row, or in the car's Docs
   and pics card for anything with no cost attached. A plain file picker sits
-  alongside for PDFs and existing photos, which are stored exactly as received.
-- Scan a receipt and it comes out flat. Scanning opens the camera directly, the
-  server finds the document in the photo and flattens it, and you see the crop
-  beside the photo as taken and choose which to keep. Nothing is stored until
-  you pick, so a detection that gets it wrong costs you a tap. If the photo
-  itself did not come out, Retake reopens the camera on the spot rather than
-  making you start the scan again. If no document is found you are offered the
-  photo as taken or another go at it. Detection runs on the server rather than
-  in the browser precisely so that it does not depend on what phone you happen
-  to be holding, and an instance without the optional scanning dependency simply
-  attaches what you took.
-- Scan and Pic are separate buttons in the Docs and pics card. Scan is for
-  paperwork and runs the crop step above. Pic is the same camera with none of
-  it, for a wheel, a paint defect or crash damage, which are whole photos with
-  no document in them to find. An expense only offers Scan, because what belongs
-  on a fuel or toll entry is its receipt.
-- Every scan and pic offers Take another, so a set of damage photos or a receipt
-  running to several pages is one trip rather than several. Each lands as it is
-  taken and the list catches up when you are done. It is a button rather than
-  something you set beforehand because a phone only reopens the camera from a
-  real tap.
+  alongside for PDFs and existing photos, stored exactly as received.
+- **Scan** a receipt and it comes out flat: the camera opens directly, the
+  server finds the document in the photo and flattens it, and you pick between
+  the crop and the photo as taken. Nothing is stored until you pick. Retake
+  reopens the camera if the photo itself missed, and if no document is found
+  you are offered the shot as taken or another go. Detection is server-side, so
+  it does not depend on the phone; an instance without the optional scanning
+  dependency simply attaches what you took.
+- **Pic** is the same camera with no crop step, for a wheel, a paint defect or
+  crash damage. Both sit in the Docs and pics card; an expense offers Scan only.
+- Every scan and pic offers **Take another**, so a set of damage photos or a
+  multi-page receipt is one trip. Each lands as it is taken.
 
 **A status page per car**
 - Tap-to-upload photo (resized server-side, shown in a consistent 4:3 frame
@@ -104,29 +94,22 @@ cost per year, per km, and what's due next?*
   Logging a service resets both clocks.
 - **Repairs** — brakes, a clutch, an exhaust — are logged from the same Service
   button and counted in the year's costs and by-category breakdown, listed
-  alongside services but tagged. Crucially they have **no effect on the service
-  interval**: a repair isn't a service, so it never resets the clock.
+  alongside services but tagged. They have **no effect on the service
+  interval**: a repair never resets the clock.
 - **Timing belt**, the same dual-deadline treatment (e.g. 160,000 km or 8
   years, whichever first) — but deliberately quiet: belt changes are logged
   from car settings, and nothing appears on the status page until the binding
   deadline is within 2,000 km / 60 days (badge) or 1,000 km / 30 days
   (banner). The years deadline joins the reminder feed like any other date.
-- **Tyres** are a first-class lifecycle item: a tyre entry records which
-  corners were changed (FL/FR/RL/RR), the size and brand (both prefilled from
-  last time), cost and odometer — a front pair and a rear pair fitted the same
-  day are just two entries. The car page derives a per-corner grid (what's
-  fitted, when, and km since). Tyres don't get a predicted due date — wear
-  isn't a calendar — so instead there are manual **tyre checks**: a zero-cost
-  entry recording which corners you looked at and, optionally, tread depth in
-  mm per corner. The grid shows each corner's last check, flagging depths at
-  3 mm and below and highlighting anything under the 1.6 mm legal minimum.
-  Fitting new tyres records a full-tread **baseline** (8 mm by default,
-  editable — performance tyres run nearer 7.5, winter nearer 9), so wear has
-  something to measure against from day one. Tap a corner for its history:
-  every reading since those tyres went on, the change since the previous check
-  in mm and km, and — once there are two readings — an estimated wear rate and
-  rough distance to the 1.6 mm minimum. It's labelled an estimate, and there's
-  still no badge and no due date.
+- **Tyres** are a first-class lifecycle item. A tyre entry records the corners
+  changed (FL/FR/RL/RR), size and brand (prefilled from last time), cost and
+  odometer, and the car page derives a per-corner grid of what's fitted, when,
+  and km since. Wear isn't a calendar, so there's no due date — instead,
+  zero-cost **tyre checks** record tread depth per corner, flagged at 3 mm and
+  highlighted under the 1.6 mm legal minimum, measured against a full-tread
+  baseline set when the tyres go on (8 mm default, editable). Tap a corner for
+  its reading history, the change in mm and km since the last check, and — once
+  there are two readings — an estimated wear rate and rough distance to 1.6 mm.
 - **Tolls and parking** get a button each on the car page and land in the year
   total, the by-category breakdown and the cost per km like any other spend.
   Each takes either a single charge (one journey, one stay) or a monthly total
@@ -135,13 +118,12 @@ cost per year, per km, and what's due next?*
   share one Tolls line and one Parking line in the totals, and monthly rows are
   marked as such in the recent list.
 - **Misc** catches the small stuff that fits nowhere else — a car wash, a few
-  euro in the air pump. A dated amount and a note saying what it was, counted in
-  the totals and the cost per km like everything else. The note is required,
-  because an amount with nothing beside it tells you nothing a year later.
+  euro in the air pump. A dated amount and a required note, counted in the
+  totals and the cost per km like everything else.
 - The entry buttons stay short on a phone: **fuel, toll and parking** on the
   main row (plus charge on an EV), **mileage** beside it, and two groups behind
   a tap — **renewals** (insurance, tax, NCT) and **running costs** (servicing,
-  tyres and misc, each with the choices described below).
+  tyres and misc, each with the choices described above).
 
 **Renewals that close the loop**
 - From 14 days before a due date the car's page prompts *"renewed?"* — one
@@ -292,7 +274,17 @@ The example also includes an **optional** section that turns each car into its
 own sensor entity (for history graphs or per-car automations). Home Assistant
 can't generate entities from a list, so that part needs one small block per
 car — copy the "Car N" group and change the id. It's not needed just to read
-the data; the summary sensor already exposes all of it.
+the data; the summary sensor already exposes all of it. Per car you get: year
+cost (with a `by_category` attribute), odometer, distance driven this year,
+fuel efficiency, cost per km, price paid at the last fill, charge cost if the
+car is set to electric, and the soonest thing due.
+
+A second optional block gives **each due item its own sensor**: service, tax,
+insurance, NCT and the timing belt, each reporting days remaining with the date
+as an attribute. Worth adding if you want one of them on a dashboard card or as
+an automation trigger. One thing to know: rows in the `dues` list identify a car
+by name rather than by id, so those sensors are keyed on the car's name. Change
+the name in the app and you have to change it in the package too.
 
 For a dashboard tab, a full-page `iframe` card pointing at the app works
 (https required if your Home Assistant is https) — though the home-screen PWA
