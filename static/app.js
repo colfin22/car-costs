@@ -220,6 +220,13 @@ async function showCar(id, year) {
   const smallBtns = `<button class="small ghost" data-cat="odo">+ ${CAT_LABELS.odo}</button>`
     + ["renewals", "running"]
       .map(k => `<button class="small ghost" data-cat="${k}">+ ${CHOOSER_LABELS[k]}…</button>`).join("");
+  // Both fuel figures are per 100 km, so they share one cell and one suffix —
+  // four separate cells wrapped to two lines on a 360px phone.
+  const fuelBits = [
+    d.fuel.eur_per_100km ? eur(d.fuel.eur_per_100km) : "",
+    d.fuel.l_per_100km ? d.fuel.l_per_100km + " L" : "",
+  ].filter(Boolean);
+  const fuelBit = fuelBits.length ? fuelBits.join(" · ") + "/100km" : "";
   const yearOpts = (d.years.length ? d.years : [String(s.year)])
     .map(y => `<option ${+y === s.year ? "selected" : ""}>${y}</option>`).join("");
   const detailBits = [c.year, c.make, c.model].filter(Boolean).join(" ");
@@ -244,11 +251,10 @@ async function showCar(id, year) {
         <select id="year-sel" style="width:auto">${yearOpts}</select>
         <span class="big">${eur(s.total)}</span></div>
       ${cats || '<div class="muted">No entries yet — add the first below.</div>'}
-      <div class="row muted" style="margin-top:6px">
-        <span>${s.km_driven ? s.km_driven.toLocaleString() + " km logged" : ""}</span>
+      <div class="row muted" style="margin-top:6px;font-size:.85em;gap:6px;flex-wrap:wrap;white-space:nowrap">
+        <span>${s.km_driven ? s.km_driven.toLocaleString() + " km" : ""}</span>
         <span>${s.cost_per_km ? eur(s.cost_per_km) + "/km" : ""}</span>
-        <span>${d.fuel.eur_per_100km ? "fuel " + eur(d.fuel.eur_per_100km) + "/100km" : ""}</span>
-        <span>${d.fuel.l_per_100km ? d.fuel.l_per_100km + " L/100km" : ""}</span></div>
+        <span>${fuelBit}</span></div>
     </div>
     <div class="card"><div class="muted" style="margin-bottom:4px">Recent</div>
       <div class="recent-scroll">
