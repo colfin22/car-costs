@@ -287,7 +287,7 @@ async function showCar(id, year) {
     </div>` : ""}
     <div class="card"><div class="muted" style="margin-bottom:4px">Docs and pics</div>
       <div id="doc-list">${(d.attachments || []).map(a => `
-        <div class="entry"><span class="doc-open" data-open="${a.id}">${esc(a.filename)} <span class="muted">${dmy(a.created)}</span></span>
+        <div class="entry"><span class="doc-open" data-open="${a.id}">${docThumb(a)}<span>${esc(a.filename)} <span class="muted">${dmy(a.created)}</span></span></span>
         <span class="doc-btns">${rotBtn(a)}<button class="danger" data-adel="${a.id}">✕</button></span></div>`).join("") ||
         '<div class="muted" id="doc-empty">Nothing here yet — certs, receipts and reports live here, and so do pictures of the car.</div>'}</div>
       <div class="row" style="gap:10px;margin-top:8px">
@@ -369,7 +369,7 @@ async function showCar(id, year) {
     if (empty) empty.remove();
     const row = document.createElement("div");
     row.className = "entry";
-    row.innerHTML = `<span class="doc-open" data-open="${att.id}">${esc(att.filename)} <span class="muted">${dmy(att.created)}</span></span>
+    row.innerHTML = `<span class="doc-open" data-open="${att.id}">${docThumb(att)}<span>${esc(att.filename)} <span class="muted">${dmy(att.created)}</span></span></span>
       <span class="doc-btns">${rotBtn(att)}<button class="danger" data-adel="${att.id}">✕</button></span>`;
     $("[data-open]", row).addEventListener("click", () => window.open(docUrl(att.id)));
     if ($("[data-rot]", row))
@@ -435,6 +435,14 @@ const docV = {};
 const docUrl = id => `/api/attachments/${id}${docV[id] ? `?v=${docV[id]}` : ""}`;
 const canRotate = att => (att.media_type || "").startsWith("image/");
 const rotBtn = att => canRotate(att) ? `<button class="ghost rot" data-rot="${att.id}" title="Rotate">↻</button>` : "";
+
+/* A row of file names never says which scan is which receipt (#44). Images get
+   a small picture, drawn and cached by the server on first request; a PDF keeps
+   an icon in the same slot so the rows still line up. The cache buster is the
+   one from the rotate above, so straightening a photo refreshes its picture. */
+const docThumb = att => canRotate(att)
+  ? `<img class="doc-thumb" loading="lazy" alt="" src="/api/attachments/${att.id}/thumb${docV[att.id] ? `?v=${docV[att.id]}` : ""}">`
+  : `<span class="doc-thumb doc-thumb-pdf">📄</span>`;
 
 function rotateDialog(att, done) {
   let deg = 0;
@@ -644,7 +652,7 @@ function attachmentsDialog(car, entry) {
   const dlg = document.createElement("dialog");
   dlg.innerHTML = `<form method="dialog"><h1>${CAT_LABELS[entry.category]} ${dmy(entry.date)} — attachments</h1>
     ${entry.attachments.map(a => `
-      <div class="entry"><span class="doc-open" data-open="${a.id}">${esc(a.filename)}</span>
+      <div class="entry"><span class="doc-open" data-open="${a.id}">${docThumb(a)}<span>${esc(a.filename)}</span></span>
       <span class="doc-btns">${rotBtn(a)}<button type="button" class="danger" data-adel="${a.id}">✕</button></span></div>`).join("") ||
       '<div class="muted">Nothing attached yet.</div>'}
     <input type="file" class="att-scan" accept="image/*" capture="environment" hidden>

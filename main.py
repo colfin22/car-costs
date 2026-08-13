@@ -846,7 +846,11 @@ def car_detail(car_id: int, year: int | None = None):
         by_entry = {}
         for a in atts:
             if a["entry_id"] is not None:
-                by_entry.setdefault(a["entry_id"], []).append({"id": a["id"], "filename": a["filename"]})
+                # media_type rides along: the 📎 dialog decides from it whether a
+                # row gets a thumbnail and a rotate button, and without it every
+                # attachment there looked like a PDF.
+                by_entry.setdefault(a["entry_id"], []).append(
+                    {"id": a["id"], "filename": a["filename"], "media_type": a["media_type"]})
         return {"car": dict(car),
                 "attachments": [dict(a) for a in atts if a["entry_id"] is None],
                 "next_due": car_dues[0] if car_dues else None,
@@ -1098,6 +1102,7 @@ def delete_entry(entry_id: int):
     for att in atts:   # rows went with the FK cascade; files are ours to remove
         if os.path.isfile(doc_path(att)):
             os.remove(doc_path(att))
+        drop_thumb(att)
 
 
 @app.post("/api/cars/{car_id}/photo")
@@ -1142,6 +1147,23 @@ PIL_TYPES = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp", "HE
 
 def doc_path(att) -> str:
     return os.path.join(DOCS_DIR, f"{att['id']}.{DOC_EXT[att['media_type']]}")
+
+
+# A list of file names tells you nothing about which scan is which receipt
+# (issue #44), so image rows carry a small picture. It is made on first request
+# and cached beside the document, which keeps the upload path fast and means the
+# attachments already on disk need no migration.
+THUMB_PX = 200
+
+
+def thumb_path(att) -> str:
+    return os.path.join(DOCS_DIR, f"{att['id']}.thumb.jpg")
+
+
+def drop_thumb(att) -> None:
+    """Forget a cached thumbnail. Cheap: the next request draws it again."""
+    if os.path.isfile(thumb_path(att)):
+        os.remove(thumb_path(att))
 
 
 # ---- scan auto-crop (issue #19) --------------------------------------------
@@ -1380,6 +1402,38 @@ def get_attachment(att_id: int):
                         headers={"Content-Disposition": f'inline; filename="{safe}"'})
 
 
+@app.get("/api/attachments/{att_id}/thumb")
+def get_attachment_thumb(att_id: int):
+    """A small square picture of an image attachment, drawn once and cached.
+
+    A PDF gets a 404 rather than a placeholder: drawing one would mean carrying
+    a PDF rendering library, which this app deliberately does not, and the UI
+    already knows from the media type not to ask.
+    """
+    with db() as con:
+        att = con.execute("SELECT * FROM attachments WHERE id=?", (att_id,)).fetchone()
+    if not att or not os.path.isfile(doc_path(att)):
+        raise HTTPException(404, "no such attachment")
+    if att["media_type"] == "application/pdf":
+        raise HTTPException(404, "no thumbnail for a PDF")
+
+    path = thumb_path(att)
+    if not os.path.isfile(path):
+        tmp = os.path.join(DOCS_DIR, f".thumb-{pysecrets.token_hex(8)}")
+        try:
+            # _load_upright drafts the decode down to roughly what is needed and
+            # applies the orientation tag, which is the whole point of it here: a
+            # 12 MP scan must never be decoded in full just to draw 200 px.
+            im = _load_upright(doc_path(att), THUMB_PX)
+            ImageOps.fit(im, (THUMB_PX, THUMB_PX), Image.LANCZOS).save(tmp, "JPEG", quality=80)
+            os.replace(tmp, path)
+        except Exception:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+            raise HTTPException(404, "no thumbnail for this file")
+    return FileResponse(path, media_type="image/jpeg")
+
+
 ROTATIONS = {90: Image.Transpose.ROTATE_270, 180: Image.Transpose.ROTATE_180,
              270: Image.Transpose.ROTATE_90}   # clockwise degrees -> Pillow's anticlockwise names
 
@@ -1419,6 +1473,7 @@ def rotate_attachment(att_id: int, degrees: int = 90):
         out.save(tmp, format=fmt, **opts)
         size = os.path.getsize(tmp)
         os.replace(tmp, path)
+        drop_thumb(att)        # or the list keeps showing the old way up (#44)
     except HTTPException:
         raise
     except Exception:
@@ -1440,6 +1495,7 @@ def delete_attachment(att_id: int):
         con.execute("DELETE FROM attachments WHERE id=?", (att_id,))
     if os.path.isfile(doc_path(att)):
         os.remove(doc_path(att))
+    drop_thumb(att)
 
 
 @app.get("/api/dues")
