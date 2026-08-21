@@ -71,8 +71,8 @@ def set_setting(con, key: str, value: str) -> None:
 # REST sensor, the uptime monitor, the LAN reverse-proxy path) are exempt — the
 # only internet route is the tunnel, and Cloudflare always stamps its header.
 AUTH_COOKIE = "carcosts_auth"
-SESSION_DAYS = 30
-PUBLIC_PATHS = {"/login", "/healthz", "/favicon.ico", "/static/icon.svg",
+SESSION_DAYS = 180
+PUBLIC_PATHS = {"/login", "/logout", "/healthz", "/favicon.ico", "/static/icon.svg",
                 "/static/icon-192.png", "/static/icon-512.png", "/static/manifest.json"}
 
 
@@ -298,12 +298,15 @@ def _code_step_html(err: str = "") -> str:
     return _login_html(CODE_FIELD.replace("{stage}", _stage_token(exp)).replace("{exp}", str(exp)), err)
 
 
+def _set_session_cookie(resp):
+    resp.set_cookie(AUTH_COOKIE, _token(), max_age=SESSION_DAYS * 86400,
+                    httponly=True, secure=True, samesite="lax")
+    return resp
+
+
 def _signed_in_response():
     from fastapi.responses import RedirectResponse
-    resp = RedirectResponse("/", status_code=302)
-    resp.set_cookie(AUTH_COOKIE, _token(), max_age=SESSION_DAYS * 86400,
-                    httponly=True, secure=True, samesite="none")
-    return resp
+    return _set_session_cookie(RedirectResponse("/", status_code=302))
 
 
 @app.middleware("http")
@@ -314,7 +317,13 @@ async def auth_gate(request, call_next):
         if request.url.path.startswith("/api/"):
             return JSONResponse({"detail": "auth required"}, status_code=401)
         return RedirectResponse("/login", status_code=302)
-    return await call_next(request)
+    response = await call_next(request)
+    # Rolling session: a real visit pushes the expiry back out, so an app used at
+    # least once every SESSION_DAYS never prompts for a login; idle for that long
+    # and it does. Only on authenticated hits, so /login itself doesn't get one.
+    if _password() and not _is_internal(request) and _is_authed(request):
+        _set_session_cookie(response)
+    return response
 
 
 @app.get("/favicon.ico")
@@ -351,6 +360,14 @@ async def login_submit(request: Request):
         return _signed_in_response()
     time.sleep(1.5)
     return HTMLResponse(_login_html(PASSWORD_FIELD, "Wrong password"), status_code=401)
+
+
+@app.get("/logout")
+def logout():
+    from fastapi.responses import RedirectResponse
+    resp = RedirectResponse("/login", status_code=302)
+    resp.delete_cookie(AUTH_COOKIE)
+    return resp
 
 
 # Enrolment lives behind the same gate as everything else, so a tunnel request

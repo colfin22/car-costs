@@ -245,10 +245,12 @@ proxy header are trusted without credentials.
 This assumes the tunnel is the *only* internet route to the app — if you
 port-forward directly instead, the non-private-peer check still gates it, but
 don't run both patterns at once without thinking it through. Sessions are
-30-day HMAC cookies (`SameSite=None; Secure`, so the app survives being
-iframed in a dashboard); rotating the password invalidates every session.
-`/login` and `/healthz` are always public. Publish the hostname only after
-the password is set.
+180-day HMAC cookies (`SameSite=Lax; Secure`) that roll forward on every
+authenticated request — visit at least once every 180 days and you never see
+a login screen; go quiet for 180 days straight and it expires. Rotating the
+password invalidates every session immediately; `/logout` ends just the
+current one. `/login`, `/logout` and `/healthz` are always public. Publish
+the hostname only after the password is set.
 
 #### Optional second factor
 
