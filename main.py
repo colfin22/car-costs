@@ -37,7 +37,7 @@ TYRE_CORNERS = ("FL", "FR", "RL", "RR")
 BASELINE_NOTE = "Full tread when fitted"   # marks the check a tyre fitting writes for itself
 FUEL_TYPES = ("petrol", "diesel", "hybrid", "phev", "ev")
 
-APP_VERSION = "1.19.0"   # bump on release; shown on the home screen
+APP_VERSION = "1.19.1"   # bump on release; shown on the home screen
 
 app = FastAPI(title="Car Costs", version=APP_VERSION)
 
@@ -734,6 +734,10 @@ def year_summary(con, car_id: int, year: int):
     }
 
 
+FUEL_TANK_L = 55            # upper bound for these cars' actual tanks (~53-55L Focus)
+MIN_FUEL_L = 3 * FUEL_TANK_L  # litres logged before a boundary-fill's worth of slack is < ~1/3 of the total
+
+
 def fuel_stats(con, car_id: int):
     """Consumption and fuel cost per 100 km, pooled over the whole span of fills.
 
@@ -747,12 +751,22 @@ def fuel_stats(con, car_id: int):
 
     Counting everything has the opposite bias, overstating by whatever is still
     in the tank unburned, but that is bounded by tank size and shrinks as the
-    distance grows. The two conventions converge after enough fills.
+    distance grows.
 
-    Litres were optional until 2026-08-13, so an older fill may have none. Such a
-    fill breaks the consumption run: the longest run of consecutive fills that
-    ALL carry litres wins. The cost figure needs only the amount and the
-    odometer, both mandatory, so it always spans every fill.
+    Neither car is ever filled to full (Colm, 20-09-2026) — there is no known
+    tank level to anchor either end of a run to, so every fill carries a
+    boundary error worth roughly one tank. Two mitigations, neither a schema
+    change:
+
+    - Litres were optional until 2026-08-13, so an older fill may have none.
+      Rather than breaking the run at that fill (discarding everything before
+      it), it is simply skipped when summing litres, keeping the full span
+      from the earliest to the latest fill that DOES carry litres. This never
+      excludes the run's own first fill's litres (see above).
+    - Both figures are withheld (None, same as the existing HA "unavailable"
+      state) until MIN_FUEL_L has actually been logged, so a two- or
+      three-fill history spanning a few hundred km is never shown as a
+      confident number — see #53.
     """
     fills = con.execute(
         "SELECT date, odometer, litres, cost FROM entries "
@@ -761,25 +775,18 @@ def fuel_stats(con, car_id: int):
     spend = sum(f["cost"] for f in fills)
     spend_dist = fills[-1]["odometer"] - fills[0]["odometer"] if len(fills) > 1 else 0.0
 
-    best_litres = best_dist = 0.0                 # longest run of fills that all have litres
-    run = []
-    for f in list(fills) + [None]:
-        if f is not None and f["litres"] is not None:
-            run.append(f)
-            continue
-        if len(run) > 1:
-            dist = run[-1]["odometer"] - run[0]["odometer"]
-            if dist > best_dist:
-                best_litres = sum(r["litres"] for r in run)
-                best_dist = dist
-        run = []
+    fuelled = [f for f in fills if f["litres"] is not None]
+    total_litres = sum(f["litres"] for f in fuelled)
+    total_dist = fuelled[-1]["odometer"] - fuelled[0]["odometer"] if len(fuelled) > 1 else 0.0
+
+    enough_data = total_litres >= MIN_FUEL_L
     last = con.execute(
         "SELECT price_per_litre FROM entries WHERE car_id=? AND category='fuel' "
         "AND price_per_litre IS NOT NULL ORDER BY date DESC, id DESC LIMIT 1",
         (car_id,)).fetchone()
     return {
-        "l_per_100km": round(100.0 * best_litres / best_dist, 1) if best_dist else None,
-        "eur_per_100km": round(100.0 * spend / spend_dist, 2) if spend_dist > 0 else None,
+        "l_per_100km": round(100.0 * total_litres / total_dist, 1) if enough_data and total_dist else None,
+        "eur_per_100km": round(100.0 * spend / spend_dist, 2) if enough_data and spend_dist > 0 else None,
         "last_price_per_litre": last["price_per_litre"] if last else None,
     }
 
