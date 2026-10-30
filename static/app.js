@@ -260,7 +260,7 @@ async function showCar(id, year) {
         <span class="big">${eur(s.total)}</span></div>
       ${cats || '<div class="muted">No entries yet — add the first below.</div>'}
       <div class="row muted" style="margin-top:6px;white-space:nowrap">
-        <span>${s.km_driven ? s.km_driven.toLocaleString() + " km logged" : ""}</span>
+        <span>${s.km_driven ? Math.round(s.km_driven).toLocaleString() + " km driven" : ""}</span>
         <span>${s.cost_per_km ? eur(s.cost_per_km) + "/km" : ""}</span></div>
       ${fuelRow}
     </div>

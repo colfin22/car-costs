@@ -713,6 +713,25 @@ def car_or_404(con, car_id: int):
     return row
 
 
+def odo_on(con, car_id: int, day: str):
+    """Odometer on `day`, read straight off a reading on that day or estimated on a
+    straight line between the nearest readings either side of it. None when `day`
+    is not bracketed by readings (nothing before it, or nothing after it yet)."""
+    before = con.execute(
+        "SELECT date, MAX(odometer) o FROM entries WHERE car_id=? AND odometer IS NOT NULL "
+        "AND date <= ? GROUP BY date ORDER BY date DESC LIMIT 1", (car_id, day)).fetchone()
+    after = con.execute(
+        "SELECT date, MIN(odometer) o FROM entries WHERE car_id=? AND odometer IS NOT NULL "
+        "AND date >= ? GROUP BY date ORDER BY date ASC LIMIT 1", (car_id, day)).fetchone()
+    if before is None or after is None:
+        return None
+    if before["date"] == after["date"]:
+        return before["o"]
+    span = (date.fromisoformat(after["date"]) - date.fromisoformat(before["date"])).days
+    into = (date.fromisoformat(day) - date.fromisoformat(before["date"])).days
+    return before["o"] + (after["o"] - before["o"]) * into / span
+
+
 def year_summary(con, car_id: int, year: int):
     rows = con.execute(
         "SELECT category, SUM(cost) total FROM entries "
@@ -723,7 +742,18 @@ def year_summary(con, car_id: int, year: int):
         "SELECT MIN(odometer) lo, MAX(odometer) hi FROM entries "
         "WHERE car_id=? AND date LIKE ? AND odometer IS NOT NULL",
         (car_id, f"{year}-%")).fetchone()
-    km = (odo["hi"] - odo["lo"]) if odo["lo"] is not None and odo["hi"] is not None else 0
+    # The costs run from 1 January, so the distance must too. Measuring from the
+    # year's first reading instead divided a whole year of costs by however many
+    # months were left after it, which made cost per km far too high whenever that
+    # reading came late in the year. Each end is the odometer on the year boundary,
+    # estimated from the readings either side, and falls back to the year's own
+    # first or last reading when there is nothing on the far side of the boundary
+    # (a car added mid year, or the current year).
+    start = odo_on(con, car_id, f"{year}-01-01")
+    end = odo_on(con, car_id, f"{year + 1}-01-01")
+    start = odo["lo"] if start is None else start
+    end = odo["hi"] if end is None else end
+    km = max(end - start, 0) if start is not None and end is not None else 0
     total = round(sum(by_cat.values()), 2)
     return {
         "year": year,
